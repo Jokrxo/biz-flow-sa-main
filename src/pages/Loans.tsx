@@ -59,7 +59,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import LoanOverview from "@/pages/loans/LoanOverview";
 
-type Loan = { id: string; company_id: string; reference: string; loan_type: "short" | "long"; principal: number; interest_rate: number; start_date: string; term_months: number; monthly_repayment: number | null; status: string; outstanding_balance: number; lender_name?: string };
+type Loan = { id: string; company_id: string; reference: string; loan_type: "short" | "long"; principal: number; interest_rate: number; start_date: string; term_months: number; monthly_repayment: number | null; status: string; outstanding_balance: number; lender_name?: string; borrower_name?: string };
 type LoanPayment = { id: string; loan_id: string; payment_date: string; amount: number; principal_component: number; interest_component: number };
 
 // --- Metric Card Component ---
@@ -102,6 +102,8 @@ export default function Loans() {
   
   // Dialog States
   const [addLoanOpen, setAddLoanOpen] = useState(false);
+  const [allLoans, setAllLoans] = useState<Loan[]>([]);
+  const [loadingAllLoans, setLoadingAllLoans] = useState(false);
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [transactionPrefill, setTransactionPrefill] = useState<any>(null);
   const [interestQuickOpen, setInterestQuickOpen] = useState(false);
@@ -192,6 +194,27 @@ export default function Loans() {
     };
     loadAux();
   }, [companyId]);
+
+  // Load all loans for amortization tab
+  const loadAllLoans = useCallback(async () => {
+    if (!companyId) return;
+    setLoadingAllLoans(true);
+    try {
+      const { data, error } = await supabase.from("loans" as any).select("*").eq("company_id", companyId).order("start_date", { ascending: false });
+      if (error) throw error;
+      setAllLoans((data || []) as any);
+    } catch (e: any) {
+      console.error("Error loading loans:", e);
+    } finally {
+      setLoadingAllLoans(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    if (tab === 'amortization' && companyId) {
+      loadAllLoans();
+    }
+  }, [tab, companyId, loadAllLoans]);
 
   useEffect(() => {
     if (addLoanOpen) {
@@ -449,24 +472,112 @@ export default function Loans() {
               <DirectorLoansList companyId={companyId} />
             </TabsContent>
             <TabsContent value="amortization" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Loan Amortization Schedules</CardTitle>
-                  <CardDescription>View detailed payment schedules for all loans</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground mb-4">
-                    To view amortization schedules for specific loans, please go to the Loan List tab and click the calculator icon next to any loan.
-                  </p>
-                  <div className="bg-muted/50 rounded-lg p-8 text-center">
-                    <TrendingUp className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-lg font-semibold mb-2">Amortization Schedules</h3>
-                    <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                      Each loan has its own amortization schedule showing principal and interest breakdown for every payment over the loan term.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              {loadingAllLoans ? (
+                <div className="flex items-center justify-center p-8">
+                  <LoadingSpinner />
+                </div>
+              ) : allLoans.length === 0 ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Loan Amortization Schedules</CardTitle>
+                    <CardDescription>View detailed payment schedules for all loans</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="bg-muted/50 rounded-lg p-8 text-center">
+                      <TrendingUp className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                      <h3 className="text-lg font-semibold mb-2">No Loans Found</h3>
+                      <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                        Create your first loan to see its amortization schedule here.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-6">
+                  {allLoans.map((loan) => {
+                    const annualRate = Number(loan.interest_rate || 0);
+                    const termMonths = Number(loan.term_months || 0);
+                    const principalAmount = Number(loan.principal || 0);
+                    const monthlyRate = annualRate / 12;
+                    let scheduled = loan.monthly_repayment && loan.monthly_repayment > 0
+                      ? Number(loan.monthly_repayment)
+                      : monthlyRate === 0 || termMonths <= 0
+                      ? termMonths > 0 ? principalAmount / termMonths : principalAmount
+                      : (principalAmount * monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
+                    const startDate = new Date(loan.start_date);
+                    const scheduleRows = [];
+                    let balance = principalAmount;
+                    for (let i = 1; i <= termMonths; i++) {
+                      const interest = balance * monthlyRate;
+                      const capital = scheduled - interest;
+                      balance = Math.max(0, balance - capital);
+                      const rowDate = new Date(startDate);
+                      rowDate.setMonth(rowDate.getMonth() + i);
+                      scheduleRows.push({
+                        period: i,
+                        date: rowDate.toISOString().split('T')[0],
+                        opening: balance + capital,
+                        installment: scheduled,
+                        interest,
+                        capital,
+                        closing: balance
+                      });
+                    }
+                    return (
+                      <Card key={loan.id}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-lg">{loan.reference}</CardTitle>
+                              <CardDescription>
+                                Principal: R {principalAmount.toFixed(2)} | {(annualRate * 100).toFixed(2)}% p.a. | {termMonths} months
+                              </CardDescription>
+                            </div>
+                            <Badge variant={loan.status === 'active' ? 'default' : 'secondary'}>
+                              {loan.status}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader className="bg-slate-700">
+                                <TableRow className="hover:bg-transparent">
+                                  <TableHead className="text-white text-center">#</TableHead>
+                                  <TableHead className="text-white">Date</TableHead>
+                                  <TableHead className="text-white text-right">Opening</TableHead>
+                                  <TableHead className="text-white text-right">Installment</TableHead>
+                                  <TableHead className="text-white text-right">Interest</TableHead>
+                                  <TableHead className="text-white text-right">Capital</TableHead>
+                                  <TableHead className="text-white text-right">Closing</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {scheduleRows.slice(0, 12).map((row) => (
+                                  <TableRow key={row.period}>
+                                    <TableCell className="text-center">{row.period}</TableCell>
+                                    <TableCell>{row.date}</TableCell>
+                                    <TableCell className="text-right">R {row.opening.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">R {row.installment.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">R {row.interest.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">R {row.capital.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">R {row.closing.toFixed(2)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                          {scheduleRows.length > 12 && (
+                            <div className="p-3 text-center text-sm text-muted-foreground border-t">
+                              Showing first 12 of {scheduleRows.length} installments. View full schedule in Loan List.
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 

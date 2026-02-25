@@ -45,11 +45,11 @@ export const buildQuotePDF = (
   doc.setFillColor(...PRIMARY_COLOR);
   doc.rect(0, 0, 210, 40, 'F');
 
-  // Company Name (Top Left, White)
+  // Company Name (Top Left, White) - adjusted for logo
   doc.setFontSize(22);
   doc.setTextColor(255, 255, 255);
   doc.setFont(undefined, 'bold');
-  doc.text(company.name || 'Company Name', 14, 25);
+  doc.text(company.name || 'Company Name', 55, 25);
 
   // Quote Label (Top Right, White)
   doc.setFontSize(30);
