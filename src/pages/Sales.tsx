@@ -21,10 +21,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export default function SalesPage() {
+export default function SalesPage({ tab: initialTab }: { tab?: string }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(() => {
+    if (initialTab) return initialTab;
     const tabParam = new URLSearchParams(window.location.search).get('tab');
     return tabParam || "customers";
   });

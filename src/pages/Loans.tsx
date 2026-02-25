@@ -83,9 +83,13 @@ function MetricCard({ title, value, icon: Icon, color, trend }: { title: string;
   );
 }
 
-export default function Loans() {
+export default function Loans({ tab: initialTab }: { tab?: string }) {
   const location = useLocation();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(() => {
+    if (initialTab) return initialTab;
+    const tabParam = new URLSearchParams(location.search).get('tab');
+    return tabParam || "overview";
+  });
   const { user } = useAuth();
   const { toast } = useToast();
   const [companyId, setCompanyId] = useState<string>("");
