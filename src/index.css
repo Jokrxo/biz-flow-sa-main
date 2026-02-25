@@ -1,0 +1,512 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* SA Finance Manager Design System - Professional Financial Theme */
+
+@layer base {
+  :root {
+    /* South African inspired color palette */
+    --background: 210 20% 97%; /* #F5F7F9 */
+    --foreground: 220 6% 19%; /* #2D2F33 */
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 6% 19%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 6% 19%;
+
+    /* Professional SA finance colors */
+    --primary: 162 72% 37%; /* #1BA37B */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 162 72% 96%; /* Light mint */
+    --secondary-foreground: 162 72% 37%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 220 6% 45%;
+
+    --accent: 32 95% 60%; /* Gold accent */
+    --accent-foreground: 180 8% 15%;
+
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 10% 90%;
+    --input: 220 10% 90%;
+    --ring: 162 72% 37%;
+
+    --radius: 0.5rem;
+
+    /* Professional gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(162 72% 30%));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(32 95% 70%));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(210 20% 95%));
+
+    /* Professional shadows */
+    --shadow-elegant: 0 4px 20px -4px hsl(var(--primary) / 0.15);
+    --shadow-card: 0 2px 10px -2px hsl(var(--foreground) / 0.05);
+    --shadow-float: 0 8px 30px -8px hsl(var(--primary) / 0.25);
+
+    /* Smooth transitions */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --sidebar-background: 162 72% 37%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 162 72% 37%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 162 72% 45%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 162 72% 37%;
+    --sidebar-ring: 162 72% 37%;
+  }
+
+  .dark {
+    /* Dark theme for professional SA Finance Manager */
+    --background: 180 10% 8%;
+    --foreground: 45 25% 95%;
+
+    --card: 180 10% 10%;
+    --card-foreground: 45 25% 95%;
+
+    --popover: 180 10% 10%;
+    --popover-foreground: 45 25% 95%;
+
+    --primary: 142 65% 45%;
+    --primary-foreground: 180 10% 8%;
+
+    --secondary: 180 8% 18%;
+    --secondary-foreground: 45 25% 90%;
+
+    --muted: 180 8% 15%;
+    --muted-foreground: 180 5% 65%;
+
+    --accent: 32 85% 55%;
+    --accent-foreground: 180 10% 8%;
+
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 45 25% 95%;
+
+    --border: 180 8% 20%;
+    --input: 180 8% 20%;
+    --ring: 142 65% 45%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(142 65% 55%));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(32 85% 65%));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(180 8% 12%));
+
+    --shadow-elegant: 0 4px 20px -4px hsl(var(--primary) / 0.3);
+    --shadow-card: 0 2px 10px -2px hsl(0 0% 0% / 0.3);
+    --shadow-float: 0 8px 30px -8px hsl(var(--primary) / 0.4);
+
+    --sidebar-background: 180 10% 6%;
+    --sidebar-foreground: 45 25% 90%;
+    --sidebar-primary: 142 65% 45%;
+    --sidebar-primary-foreground: 180 10% 6%;
+    --sidebar-accent: 180 8% 12%;
+    --sidebar-accent-foreground: 45 25% 90%;
+    --sidebar-border: 180 8% 15%;
+    --sidebar-ring: 142 65% 45%;
+  }
+  .theme-corp-blue {
+    --background: 215 25% 98%;
+    --foreground: 215 30% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 30% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 30% 15%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 25% 90%;
+    --secondary-foreground: 215 30% 15%;
+    --muted: 215 20% 95%;
+    --muted-foreground: 215 15% 45%;
+    --accent: 215 30% 30%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 217 91% 60%;
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(217 91% 50%));
+    --gradient-accent: linear-gradient(135deg, hsl(215 30% 30%), hsl(215 25% 40%));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(215 20% 95%));
+    --shadow-elegant: 0 4px 20px -4px hsl(217 91% 60% / 0.15);
+    --sidebar-background: 215 25% 97%;
+    --sidebar-foreground: 215 30% 25%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 215 20% 94%;
+    --sidebar-accent-foreground: 215 30% 25%;
+    --sidebar-border: 215 20% 88%;
+    --sidebar-ring: 217 91% 60%;
+  }
+  .theme-fintech-green {
+    --background: 168 35% 98%;
+    --foreground: 168 15% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 168 15% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 168 15% 15%;
+    --primary: 168 60% 40%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 168 30% 90%;
+    --secondary-foreground: 168 15% 15%;
+    --muted: 168 20% 94%;
+    --muted-foreground: 168 12% 45%;
+    --accent: 174 65% 45%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 168 20% 86%;
+    --input: 168 20% 86%;
+    --ring: 168 60% 40%;
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(168 60% 50%));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(174 65% 55%));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(168 20% 94%));
+    --shadow-elegant: 0 4px 20px -4px hsl(168 60% 40% / 0.15);
+    --sidebar-background: 168 35% 97%;
+    --sidebar-foreground: 168 20% 25%;
+    --sidebar-primary: 168 60% 40%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 168 20% 94%;
+    --sidebar-accent-foreground: 168 20% 25%;
+    --sidebar-border: 168 20% 86%;
+    --sidebar-ring: 168 60% 40%;
+  }
+  .theme-premium-navy {
+    --background: 220 35% 10%;
+    --foreground: 180 15% 92%;
+    --card: 220 35% 12%;
+    --card-foreground: 180 15% 92%;
+    --popover: 220 35% 12%;
+    --popover-foreground: 180 15% 92%;
+    --primary: 174 75% 45%;
+    --primary-foreground: 220 35% 10%;
+    --secondary: 220 30% 18%;
+    --secondary-foreground: 180 15% 92%;
+    --muted: 220 25% 16%;
+    --muted-foreground: 180 10% 70%;
+    --accent: 174 85% 55%;
+    --accent-foreground: 220 35% 10%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 180 15% 92%;
+    --border: 220 25% 20%;
+    --input: 220 25% 20%;
+    --ring: 174 75% 45%;
+    --gradient-primary: linear-gradient(135deg, hsl(220 35% 12%), hsl(174 75% 45%));
+    --gradient-accent: linear-gradient(135deg, hsl(174 85% 55%), hsl(174 75% 45%));
+    --gradient-subtle: linear-gradient(180deg, hsl(220 35% 10%), hsl(220 25% 16%));
+    --shadow-elegant: 0 4px 20px -4px hsl(174 75% 45% / 0.25);
+    --sidebar-background: 220 35% 8%;
+    --sidebar-foreground: 180 15% 92%;
+    --sidebar-primary: 174 75% 45%;
+    --sidebar-primary-foreground: 220 35% 8%;
+    --sidebar-accent: 220 25% 14%;
+    --sidebar-accent-foreground: 180 15% 92%;
+    --sidebar-border: 220 25% 18%;
+    --sidebar-ring: 174 75% 45%;
+  }
+  .theme-neutral-enterprise {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 0 0% 20%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 92%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 25%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
+    --ring: 0 0% 20%;
+    --gradient-primary: linear-gradient(135deg, hsl(0 0% 20%), hsl(0 0% 30%));
+    --gradient-accent: linear-gradient(135deg, hsl(0 0% 25%), hsl(0 0% 35%));
+    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 98%), hsl(0 0% 94%));
+    --shadow-elegant: 0 4px 20px -4px hsl(0 0% 20% / 0.15);
+    --sidebar-background: 0 0% 97%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-primary: 0 0% 20%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 92%;
+    --sidebar-accent-foreground: 0 0% 20%;
+    --sidebar-border: 0 0% 85%;
+    --sidebar-ring: 0 0% 20%;
+  }
+  .theme-dark-pro {
+    --background: 220 10% 6%;
+    --foreground: 0 0% 96%;
+    --card: 220 10% 8%;
+    --card-foreground: 0 0% 96%;
+    --popover: 220 10% 8%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 220 10% 6%;
+    --secondary: 220 10% 12%;
+    --secondary-foreground: 0 0% 92%;
+    --muted: 220 10% 10%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 217 91% 60%;
+    --accent-foreground: 220 10% 6%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 220 10% 16%;
+    --input: 220 10% 16%;
+    --ring: 217 91% 60%;
+    --gradient-primary: linear-gradient(135deg, hsl(220 10% 8%), hsl(217 91% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 50%));
+    --gradient-subtle: linear-gradient(180deg, hsl(220 10% 6%), hsl(220 10% 10%));
+    --shadow-elegant: 0 4px 20px -4px hsl(217 91% 60% / 0.25);
+    --sidebar-background: 220 10% 5%;
+    --sidebar-foreground: 0 0% 92%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 220 10% 5%;
+    --sidebar-accent: 220 10% 9%;
+    --sidebar-accent-foreground: 0 0% 92%;
+    --sidebar-border: 220 10% 12%;
+    --sidebar-ring: 217 91% 60%;
+  }
+  .theme-exec-gold {
+    --background: 0 0% 6%;
+    --foreground: 48 95% 90%;
+    --card: 0 0% 8%;
+    --card-foreground: 48 95% 90%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 48 95% 90%;
+    --primary: 48 95% 52%;
+    --primary-foreground: 0 0% 6%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 48 95% 90%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 48 25% 75%;
+    --accent: 48 95% 50%;
+    --accent-foreground: 0 0% 6%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 48 95% 90%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 48 95% 52%;
+    --gradient-primary: linear-gradient(135deg, hsl(0 0% 8%), hsl(48 95% 52%));
+    --gradient-accent: linear-gradient(135deg, hsl(48 95% 50%), hsl(48 95% 60%));
+    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 6%), hsl(0 0% 10%));
+    --shadow-elegant: 0 4px 20px -4px hsl(48 95% 52% / 0.3);
+    --sidebar-background: 0 0% 5%;
+    --sidebar-foreground: 48 95% 90%;
+    --sidebar-primary: 48 95% 52%;
+    --sidebar-primary-foreground: 0 0% 6%;
+    --sidebar-accent: 0 0% 9%;
+    --sidebar-accent-foreground: 48 95% 90%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 48 95% 52%;
+  }
+  .theme-ocean-gradient {
+    --background: 200 30% 98%;
+    --foreground: 200 20% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 20% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 20% 15%;
+    --primary: 190 80% 40%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 210 60% 50%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 200 20% 94%;
+    --muted-foreground: 200 15% 45%;
+    --accent: 205 70% 55%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 200 20% 86%;
+    --input: 200 20% 86%;
+    --ring: 205 70% 55%;
+    --gradient-primary: linear-gradient(135deg, hsl(190 80% 40%), hsl(210 60% 50%));
+    --gradient-accent: linear-gradient(135deg, hsl(205 70% 55%), hsl(210 60% 50%));
+    --gradient-subtle: linear-gradient(180deg, hsl(200 30% 98%), hsl(200 20% 94%));
+    --shadow-elegant: 0 4px 20px -4px hsl(205 70% 55% / 0.2);
+    --sidebar-background: 200 30% 97%;
+    --sidebar-foreground: 200 20% 25%;
+    --sidebar-primary: 190 80% 40%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 200 20% 93%;
+    --sidebar-accent-foreground: 200 20% 25%;
+    --sidebar-border: 200 20% 86%;
+    --sidebar-ring: 205 70% 55%;
+  }
+  .theme-purple-digital {
+    --background: 260 25% 10%;
+    --foreground: 0 0% 95%;
+    --card: 260 25% 12%;
+    --card-foreground: 0 0% 95%;
+    --popover: 260 25% 12%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 275 85% 60%;
+    --primary-foreground: 260 25% 10%;
+    --secondary: 230 90% 60%;
+    --secondary-foreground: 260 25% 10%;
+    --muted: 260 20% 16%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 285 85% 60%;
+    --accent-foreground: 260 25% 10%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 95%;
+    --border: 260 20% 20%;
+    --input: 260 20% 20%;
+    --ring: 275 85% 60%;
+    --gradient-primary: linear-gradient(135deg, hsl(260 25% 12%), hsl(275 85% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(230 90% 60%), hsl(275 85% 60%));
+    --gradient-subtle: linear-gradient(180deg, hsl(260 25% 10%), hsl(260 20% 16%));
+    --shadow-elegant: 0 4px 20px -4px hsl(275 85% 60% / 0.25);
+    --sidebar-background: 260 25% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 275 85% 60%;
+    --sidebar-primary-foreground: 260 25% 8%;
+    --sidebar-accent: 260 20% 14%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 260 20% 18%;
+    --sidebar-ring: 275 85% 60%;
+  }
+  .theme-tech-silver {
+    --background: 210 20% 98%;
+    --foreground: 210 10% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 10% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 10% 15%;
+    --primary: 210 10% 70%;
+    --primary-foreground: 210 10% 10%;
+    --secondary: 210 60% 50%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 210 15% 94%;
+    --muted-foreground: 210 10% 45%;
+    --accent: 210 60% 50%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 210 15% 86%;
+    --input: 210 15% 86%;
+    --ring: 210 60% 50%;
+    --gradient-primary: linear-gradient(135deg, hsl(210 10% 70%), hsl(210 60% 50%));
+    --gradient-accent: linear-gradient(135deg, hsl(210 60% 50%), hsl(210 40% 60%));
+    --gradient-subtle: linear-gradient(180deg, hsl(210 20% 98%), hsl(210 15% 94%));
+    --shadow-elegant: 0 4px 20px -4px hsl(210 60% 50% / 0.2);
+    --sidebar-background: 210 20% 97%;
+    --sidebar-foreground: 210 10% 25%;
+    --sidebar-primary: 210 60% 50%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 210 15% 93%;
+    --sidebar-accent-foreground: 210 10% 25%;
+    --sidebar-border: 210 15% 86%;
+    --sidebar-ring: 210 60% 50%;
+  }
+  .theme-eco-green {
+    --background: 120 30% 98%;
+    --foreground: 120 20% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 120 20% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 120 20% 15%;
+    --primary: 120 40% 40%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 30 30% 40%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 120 20% 94%;
+    --muted-foreground: 120 15% 45%;
+    --accent: 30 40% 40%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 120 20% 86%;
+    --input: 120 20% 86%;
+    --ring: 120 40% 40%;
+    --gradient-primary: linear-gradient(135deg, hsl(120 40% 40%), hsl(120 50% 50%));
+    --gradient-accent: linear-gradient(135deg, hsl(30 40% 40%), hsl(30 45% 50%));
+    --gradient-subtle: linear-gradient(180deg, hsl(120 30% 98%), hsl(120 20% 94%));
+    --shadow-elegant: 0 4px 20px -4px hsl(120 40% 40% / 0.2);
+    --sidebar-background: 120 30% 97%;
+    --sidebar-foreground: 120 20% 25%;
+    --sidebar-primary: 120 40% 40%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 120 20% 93%;
+    --sidebar-accent-foreground: 120 20% 25%;
+    --sidebar-border: 120 20% 86%;
+    --sidebar-ring: 120 40% 40%;
+  }
+}
+
+@layer components {
+  /* Professional animations */
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  /* Professional card styles */
+  .card-professional {
+    background-color: hsl(var(--card));
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(4px);
+    transition-property: all;
+    transition-duration: 300ms;
+    border-width: 1px;
+    border-style: solid;
+    border-color: hsl(var(--border));
+  }
+  .card-professional:hover {
+    box-shadow: var(--shadow-float);
+  }
+
+  .gradient-primary {
+    background: var(--gradient-primary);
+    color: hsl(var(--primary-foreground));
+  }
+
+  .bg-gradient-primary {
+    background: var(--gradient-primary) !important;
+    color: hsl(var(--primary-foreground)) !important;
+  }
+
+  .gradient-accent {
+    background: var(--gradient-accent);
+    color: hsl(var(--accent-foreground));
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+  to {
+    box-shadow: 0 0 30px hsl(var(--primary) / 0.6);
+  }
+}
