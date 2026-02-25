@@ -96,6 +96,7 @@ const App = () => (
                 {/* Transactions */}
                 <Route path="/purchase" element={<Suspense fallback={<PageLoader />}><Purchase /></Suspense>} />
                 <Route path="/sales" element={<Suspense fallback={<PageLoader />}><Sales /></Suspense>} />
+                <Route path="/customers" element={<Suspense fallback={<PageLoader />}><Sales /></Suspense>} />
                 <Route path="/inventory" element={<Suspense fallback={<PageLoader />}><Inventory /></Suspense>} />
                 <Route path="/journals" element={<Suspense fallback={<PageLoader />}><Journals /></Suspense>} />
                 <Route path="/transactions" element={<Suspense fallback={<PageLoader />}><Transactions /></Suspense>} />

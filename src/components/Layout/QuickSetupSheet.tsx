@@ -118,7 +118,7 @@ export const QuickSetupSheet = ({ open, onOpenChange }: QuickSetupSheetProps) =>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge variant={setupStatus.hasProducts ? 'default' : 'outline'}>{setupStatus.hasProducts ? 'Done' : 'Pending'}</Badge>
-                  <Button size="sm" variant="ghost" onClick={() => { navigate('/sales?tab=products'); onOpenChange(false); }}>Go</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { navigate('/inventory'); onOpenChange(false); }}>Go</Button>
                 </div>
               </CardContent>
             </Card>
@@ -131,7 +131,7 @@ export const QuickSetupSheet = ({ open, onOpenChange }: QuickSetupSheetProps) =>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge variant={setupStatus.hasCustomers ? 'default' : 'outline'}>{setupStatus.hasCustomers ? 'Done' : 'Pending'}</Badge>
-                  <Button size="sm" variant="ghost" onClick={() => { navigate('/customers'); onOpenChange(false); }}>Go</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { navigate('/sales?tab=customers'); onOpenChange(false); }}>Go</Button>
                 </div>
               </CardContent>
             </Card>
