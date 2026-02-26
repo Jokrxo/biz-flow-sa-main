@@ -1072,6 +1072,41 @@ export const SalesInvoices = () => {
     }
   };
 
+  // Handle print invoice (opens print dialog)
+  const handlePrintInvoice = async (inv: any) => {
+    try {
+      const [company, items] = await Promise.all([
+        fetchCompanyForPDF(),
+        fetchInvoiceItemsForPDF(inv.id),
+      ]);
+      const dto = mapInvoiceForPDF(inv);
+      const doc = buildInvoicePDF(dto, items, company);
+      const logoDataUrl = await fetchLogoDataUrl(company.logo_url);
+      if (logoDataUrl) addLogoToPDF(doc, logoDataUrl);
+      
+      // Open print dialog
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast({ title: 'Error', description: 'Could not open print window', variant: 'destructive' });
+        return;
+      }
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      printWindow.document.write(`
+        <html>
+          <head><title>Print Invoice ${inv.invoice_number}</title></head>
+          <body style="margin:0;">
+            <iframe src="${pdfUrl}" style="width:100%;height:100%;" onload="this.contentWindow.print();"></iframe>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (e) {
+      console.error(e);
+      toast({ title: 'Error', description: 'Failed to print invoice', variant: 'destructive' });
+    }
+  };
+
   const openSendDialog = (inv: any) => {
     setSelectedInvoice(inv);
     const email = inv.customer_email || inv.customer?.email || '';
@@ -1603,7 +1638,7 @@ export const SalesInvoices = () => {
                                           <DropdownMenuItem onClick={() => handleDownloadInvoice(invoice)}>
                                               <FileText className="h-4 w-4 mr-2" /> Preview PDF
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleDownloadInvoice(invoice)}>
+                                          <DropdownMenuItem onClick={() => handlePrintInvoice(invoice)}>
                                               <Printer className="h-4 w-4 mr-2" /> Print
                                           </DropdownMenuItem>
                                           <DropdownMenuItem onClick={() => openSendDialog(invoice)}>
