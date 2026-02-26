@@ -24,12 +24,19 @@ export interface ResendEmailResponse {
 }
 
 export const sendEmailWithResend = async (params: ResendEmailParams): Promise<ResendEmailResponse> => {
+  console.log('Resend API Key present:', !!RESEND_API_KEY);
+  console.log('Resend API Key value:', RESEND_API_KEY ? RESEND_API_KEY.substring(0, 10) + '...' : 'N/A');
+  
   if (!RESEND_API_KEY) {
-    console.error('Resend API key not configured');
-    return { error: 'Email service not configured' };
+    console.error('Resend API key not configured - VITE_RESEND_API_KEY not found in environment');
+    return { error: 'Email service not configured - API key missing' };
   }
 
   try {
+    console.log('Sending email to:', params.to);
+    console.log('Email subject:', params.subject);
+    console.log('Has attachments:', !!params.attachments?.length);
+    
     const response = await fetch(RESEND_API_URL, {
       method: 'POST',
       headers: {

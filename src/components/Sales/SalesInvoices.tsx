@@ -1578,6 +1578,26 @@ export const SalesInvoices = () => {
              <Button variant="outline" size="sm" className="h-9 gap-1 text-[#0070ad] border-[#0070ad] hover:bg-blue-50">
                Quick Reports <ChevronDown className="h-3 w-3" />
              </Button>
+             <Button 
+               variant="outline" 
+               size="sm" 
+               className="h-9 gap-1 text-green-700 border-green-700 hover:bg-green-50"
+               onClick={async () => {
+                 // Get all draft invoices
+                 const draftInvoices = invoices.filter((inv: any) => inv.status === 'draft');
+                 if (draftInvoices.length === 0) {
+                   toast({ title: 'No draft invoices', description: 'There are no draft invoices to post', variant: 'destructive' });
+                   return;
+                 }
+                 // Post first draft invoice
+                 const inv = draftInvoices[0];
+                 setSentInvoice(inv);
+                 setSentDate(inv.invoice_date || todayStr);
+                 setSentDialogOpen(true);
+               }}
+             >
+               <Check className="h-3.5 w-3.5" /> Post Invoice
+             </Button>
           </div>
         </div>
       </div>
