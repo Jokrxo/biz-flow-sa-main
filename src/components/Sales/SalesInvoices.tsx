@@ -245,8 +245,16 @@ export const SalesInvoices = () => {
         .update({ status: "sent", sent_at: new Date(sentDate).toISOString() })
         .eq("id", sentInvoice.id);
       if (error) throw error;
-      await openJournalForSent(sentInvoice, sentDate, sentIncludeVAT);
-      toast({ title: "Success", description: "Opening transaction form to post Debtors (AR), Revenue and VAT; plus COGS/Inventory if applicable" });
+      
+      // Directly post the invoice to ledger without showing form
+      try {
+        await postInvoiceSent(sentInvoice, sentDate);
+        toast({ title: "Success", description: `Posted invoice ${sentInvoice.invoice_number}: Dr Receivable | Cr Revenue, Cr VAT; Dr COGS | Cr Inventory` });
+      } catch (postError: any) {
+        console.error('Post error:', postError);
+        toast({ title: "Warning", description: "Invoice marked as sent but posting failed: " + postError.message });
+      }
+      
       setSentDialogOpen(false);
       setSentInvoice(null);
       loadData();
