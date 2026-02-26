@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +62,7 @@ export const SalesInvoices = () => {
   const { toast } = useToast();
   const { isAdmin, isAccountant } = useRoles();
   const navigate = useNavigate();
+  const location = useLocation();
   const todayStr = new Date().toISOString().split("T")[0];
   const [posting, setPosting] = useState(false);
   const [lastPosting, setLastPosting] = useState<string | null>(null);
@@ -87,6 +88,27 @@ export const SalesInvoices = () => {
     }
     fetchCompany();
   }, [user]);
+
+  // Handle URL parameters for pre-selected customer
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    const customerName = params.get('customer');
+    
+    if (action === 'create' && customerName) {
+      // Open the create dialog
+      setDialogOpen(true);
+      // Apply customer selection after customers are loaded
+      const timer = setTimeout(() => {
+        if (customers.length > 0) {
+          applyCustomerSelection(decodeURIComponent(customerName));
+        }
+      }, 500);
+      // Clear URL parameters
+      navigate(window.location.pathname, { replace: true });
+      return () => clearTimeout(timer);
+    }
+  }, [location.search, customers, navigate]);
 
   useEffect(() => {
     async function checkVatStatus() {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,8 @@ export const SalesQuotes = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const { isAdmin, isAccountant } = useRoles();
+  const navigate = useNavigate();
+  const location = useLocation();
   
   // State for new UI
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -158,20 +161,23 @@ export const SalesQuotes = () => {
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('openCreate') === '1') {
-        const name = params.get('customer') || "";
+      // Support both action=create and openCreate=1
+      if (params.get('action') === 'create' || params.get('openCreate') === '1') {
+        const name = params.get('customer') || params.get('customer_name') || "";
         const email = params.get('email') || "";
         setFormData({
-          customer_name: name,
+          customer_name: decodeURIComponent(name),
           customer_email: email,
           quote_date: new Date().toISOString().split("T")[0],
           expiry_date: "",
           total_amount: "",
         });
         setDialogOpen(true);
+        // Clear URL parameters
+        navigate(window.location.pathname, { replace: true });
       }
     } catch {}
-  }, []);
+  }, [navigate]);
 
   const loadLists = useCallback(async () => {
     try {

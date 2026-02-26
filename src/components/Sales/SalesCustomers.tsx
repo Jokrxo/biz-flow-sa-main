@@ -94,6 +94,18 @@ export function SalesCustomers() {
   const [inactiveWarningOpen, setInactiveWarningOpen] = useState(false);
   const [inactiveActionMessage, setInactiveActionMessage] = useState("");
 
+  // Quick Actions State
+  const [quickViewOpen, setQuickViewOpen] = useState(false);
+  const [editCustomerOpen, setEditCustomerOpen] = useState(false);
+  const [deleteCustomerOpen, setDeleteCustomerOpen] = useState(false);
+  const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: ""
+  });
+
 
   const [formData, setFormData] = useState({
     name: "",
@@ -158,6 +170,76 @@ export function SalesCustomers() {
         return false;
     }
     return true;
+  };
+
+  // Quick Actions Handlers
+  const handleQuickView = (customer: Customer) => {
+    setViewCustomer(customer);
+    setQuickViewOpen(true);
+  };
+
+  const handleEditCustomer = (customer: Customer) => {
+    setViewCustomer(customer);
+    setEditFormData({
+      name: customer.name.startsWith('[INACTIVE] ') ? customer.name.replace('[INACTIVE] ', '') : customer.name,
+      email: customer.email || "",
+      phone: customer.phone || "",
+      address: customer.address || ""
+    });
+    setEditCustomerOpen(true);
+  };
+
+  const handleDeleteCustomer = (customer: Customer) => {
+    setViewCustomer(customer);
+    setDeleteCustomerOpen(true);
+  };
+
+  const confirmDeleteCustomer = async () => {
+    if (!viewCustomer) return;
+    if (!isAdmin) {
+      toast({ title: "Permission denied", description: "Only admins can delete customers", variant: "destructive" });
+      return;
+    }
+    try {
+      const { error } = await supabase.from('customers').delete().eq('id', viewCustomer.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Customer deleted successfully" });
+      setDeleteCustomerOpen(false);
+      setViewCustomer(null);
+      loadCustomers();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleUpdateCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewCustomer) return;
+    try {
+      const { error } = await supabase.from('customers').update({
+        name: editFormData.name,
+        email: editFormData.email || null,
+        phone: editFormData.phone || null,
+        address: editFormData.address || null
+      }).eq('id', viewCustomer.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Customer updated successfully" });
+      setEditCustomerOpen(false);
+      setViewCustomer(null);
+      loadCustomers();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleCreateInvoice = (customer: Customer) => {
+    const customerName = customer.name.startsWith('[INACTIVE] ') ? customer.name.replace('[INACTIVE] ', '') : customer.name;
+    window.location.href = `/sales?tab=invoices&action=create&customer=${encodeURIComponent(customerName)}`;
+  };
+
+  const handleCreateQuote = (customer: Customer) => {
+    const customerName = customer.name.startsWith('[INACTIVE] ') ? customer.name.replace('[INACTIVE] ', '') : customer.name;
+    window.location.href = `/sales?tab=quotes&action=create&customer=${encodeURIComponent(customerName)}`;
   };
 
   const filteredCustomers = useMemo(() => {
@@ -993,19 +1075,28 @@ export function SalesCustomers() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem className="cursor-pointer">Quick View</DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer">Edit</DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer text-red-600">Delete</DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleQuickView(customer)}>
+                              <Eye className="h-4 w-4 mr-2" /> Quick View
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleEditCustomer(customer)}>
+                              <Edit className="h-4 w-4 mr-2" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer text-red-600" onClick={() => handleDeleteCustomer(customer)}>
+                              <Trash className="h-4 w-4 mr-2" /> Delete
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="cursor-pointer">Create Invoice</DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer">Create Quote</DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer">Create Sales Order</DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleCreateInvoice(customer)}>
+                              <FileText className="h-4 w-4 mr-2" /> Create Invoice
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => handleCreateQuote(customer)}>
+                              <FileSpreadsheet className="h-4 w-4 mr-2" /> Create Quote
+                            </DropdownMenuItem>
                             <DropdownMenuItem className="cursor-pointer" onClick={() => window.location.href = '/sales?tab=receipts&action=create-receipt'}>
-                                Create Receipt
+                                <CreditCard className="h-4 w-4 mr-2" /> Create Receipt
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem className="cursor-pointer" onClick={() => openStatementDialog(customer)}>
-                                View Statement
+                                <FileDown className="h-4 w-4 mr-2" /> View Statement
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1179,6 +1270,125 @@ export function SalesCustomers() {
           <div className="pt-4">
             <Button className="w-full bg-gradient-primary" onClick={postCustomerPayment}>Post Payment</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick View Dialog */}
+      <Dialog open={quickViewOpen} onOpenChange={setQuickViewOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Customer Details</DialogTitle>
+          </DialogHeader>
+          {viewCustomer && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 pb-4 border-b">
+                <Avatar className="h-16 w-16">
+                  <AvatarFallback className="text-xl bg-[#0070ad] text-white">
+                    {viewCustomer.name.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="text-lg font-semibold">{viewCustomer.name.startsWith('[INACTIVE] ') ? viewCustomer.name.replace('[INACTIVE] ', '') : viewCustomer.name}</h3>
+                  <p className="text-sm text-muted-foreground">Customer ID: {viewCustomer.id.slice(0, 8)}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Email</Label>
+                  <p className="font-medium">{viewCustomer.email || '-'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Phone</Label>
+                  <p className="font-medium">{viewCustomer.phone || '-'}</p>
+                </div>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Address</Label>
+                <p className="font-medium">{viewCustomer.address || '-'}</p>
+              </div>
+              <div className="pt-4 flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => handleEditCustomer(viewCustomer)}>
+                  <Edit className="h-4 w-4 mr-2" /> Edit
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => handleCreateInvoice(viewCustomer)}>
+                  <FileText className="h-4 w-4 mr-2" /> Create Invoice
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Customer Dialog */}
+      <Dialog open={editCustomerOpen} onOpenChange={setEditCustomerOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Customer</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateCustomer} className="space-y-4">
+            <div>
+              <Label>Customer Name *</Label>
+              <Input
+                value={editFormData.name}
+                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                required
+                placeholder="Business or individual name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={editFormData.email}
+                  onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                  placeholder="client@example.com"
+                />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                  placeholder="082 123 4567"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Address</Label>
+              <Input
+                value={editFormData.address}
+                onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                placeholder="Physical address"
+              />
+            </div>
+            <Button type="submit" className="w-full bg-[#0070ad] hover:bg-[#005a8b]">Save Changes</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteCustomerOpen} onOpenChange={setDeleteCustomerOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Customer
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this customer? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {viewCustomer && (
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="font-medium">{viewCustomer.name}</p>
+              {viewCustomer.email && <p className="text-sm text-muted-foreground">{viewCustomer.email}</p>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteCustomerOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteCustomer}>Delete</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
