@@ -22,6 +22,7 @@ import { Download, Mail, Plus, Trash2, FileText, MoreHorizontal, CheckCircle2, C
 import { Checkbox } from "@/components/ui/checkbox";
 import { exportInvoiceToPDF, buildInvoicePDF, addLogoToPDF, fetchLogoDataUrl, type InvoiceForPDF, type InvoiceItemForPDF, type CompanyForPDF } from '@/lib/invoice-export';
 import { exportInvoicesToExcel } from '@/lib/export-utils';
+import { sendEmailWithResend, blobToBase64 } from '@/lib/resend-email';
 
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Progress } from "@/components/ui/progress";
@@ -1371,8 +1372,12 @@ export const SalesInvoices = () => {
       const doc = buildInvoicePDF(dto, items, company);
       const logoDataUrl = await fetchLogoDataUrl(company.logo_url);
       if (logoDataUrl) addLogoToPDF(doc, logoDataUrl);
+      
+      // Generate PDF blob
       const blob = doc.output('blob');
       const fileName = `invoice_${dto.invoice_number}.pdf`;
+      
+      // Upload to Supabase storage (for backup/tracking)
       const path = `invoices/${fileName}`;
       const { error: uploadErr } = await supabase.storage
         .from('invoices')
@@ -1382,24 +1387,65 @@ export const SalesInvoices = () => {
         const { data } = supabase.storage.from('invoices').getPublicUrl(path);
         publicUrl = data?.publicUrl || '';
       }
-      const subject = encodeURIComponent(`Invoice ${dto.invoice_number}`);
-      const bodyLines = [
-        sendMessage,
-        publicUrl ? `\nDownload your invoice: ${publicUrl}` : '',
-      ].join('\n');
-      const body = encodeURIComponent(bodyLines);
-      const ccParam = companyEmail ? `&cc=${encodeURIComponent(companyEmail)}` : '';
-      window.location.href = `mailto:${sendEmail}?subject=${subject}&body=${body}${ccParam}`;
-      await supabase
-        .from('invoices')
-        .update({ status: 'sent', sent_at: new Date().toISOString() })
-        .eq('id', selectedInvoice.id);
-      await postInvoiceSent(selectedInvoice);
-      toast({ title: 'Success', description: 'Email compose opened with invoice link' });
+      
+      // Convert PDF to base64 for attachment
+      const base64Pdf = await blobToBase64(blob);
+      
+      // Send email with Resend API
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
+          <h2 style="color: #333;">Invoice ${dto.invoice_number}</h2>
+          <p>Dear Customer,</p>
+          <p>${sendMessage || 'Please find attached your invoice.'}</p>
+          <div style="margin: 20px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
+            <p style="margin: 5px 0;"><strong>Invoice Number:</strong> ${dto.invoice_number}</p>
+            <p style="margin: 5px 0;"><strong>Date:</strong> ${dto.invoice_date}</p>
+            <p style="margin: 5px 0;"><strong>Total Amount:</strong> R ${dto.total_amount}</p>
+            ${dto.due_date ? `<p style="margin: 5px 0;"><strong>Due Date:</strong> ${dto.due_date}</p>` : ''}
+          </div>
+          ${publicUrl ? `<p>Or download directly: <a href="${publicUrl}">${publicUrl}</a></p>` : ''}
+          <p style="margin-top: 30px;">Kind regards,<br/>${company.name}</p>
+        </div>
+      `;
+
+      const result = await sendEmailWithResend({
+        to: sendEmail,
+        subject: `Invoice ${dto.invoice_number}`,
+        html: htmlContent,
+        attachments: [
+          {
+            filename: fileName,
+            content: base64Pdf,
+            contentType: 'application/pdf',
+          },
+        ],
+        cc: companyEmail || undefined,
+      });
+
+      if (result.error) {
+        // Fallback to mailto if Resend fails
+        console.warn('Resend failed, falling back to mailto:', result.error);
+        const subject = encodeURIComponent(`Invoice ${dto.invoice_number}`);
+        const bodyLines = [
+          sendMessage,
+          publicUrl ? `\nDownload your invoice: ${publicUrl}` : '',
+        ].join('\n');
+        const body = encodeURIComponent(bodyLines);
+        const ccParam = companyEmail ? `&cc=${encodeURIComponent(companyEmail)}` : '';
+        window.location.href = `mailto:${sendEmail}?subject=${subject}&body=${body}${ccParam}`;
+      } else {
+        // Update invoice status
+        await supabase
+          .from('invoices')
+          .update({ status: 'sent', sent_at: new Date().toISOString() })
+          .eq('id', selectedInvoice.id);
+        await postInvoiceSent(selectedInvoice);
+        toast({ title: 'Success', description: 'Email sent successfully with invoice attached' });
+      }
       setSendDialogOpen(false);
     } catch (e) {
       console.error(e);
-      toast({ title: 'Error', description: 'Failed to prepare email', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to send email', variant: 'destructive' });
     } finally {
       setSending(false);
     }
