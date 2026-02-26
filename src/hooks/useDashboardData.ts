@@ -32,6 +32,11 @@ export interface DashboardData {
   assetTrend: any[];
   inventoryLevels: any[];
   bsComposition: any[];
+  bsBreakdown: {
+    assets: { current: number; nonCurrent: number; total: number };
+    liabilities: { current: number; nonCurrent: number; total: number };
+    equity: { capital: number; retained: number; total: number };
+  };
   cashGaugePct: number;
   cashOnTrack: boolean;
   safeMinimum: number;
@@ -83,6 +88,11 @@ const DEFAULT_DATA: DashboardData = {
   assetTrend: [],
   inventoryLevels: [],
   bsComposition: [],
+  bsBreakdown: {
+    assets: { current: 0, nonCurrent: 0, total: 0 },
+    liabilities: { current: 0, nonCurrent: 0, total: 0 },
+    equity: { capital: 0, retained: 0, total: 0 }
+  },
   cashGaugePct: 0,
   cashOnTrack: true,
   safeMinimum: 0,
@@ -100,22 +110,38 @@ const DEFAULT_DATA: DashboardData = {
     posted: { amount: 0, count: 0 },
     matchStatus: true,
     lastSync: new Date()
-  }
+  },
+  rawInvoices: [],
+  rawTransactions: []
 };
 
 // Helper functions (preserved from original)
 const totalsFromTrialBalance = (tb: any[]) => {
-  const income = tb.filter((a: any) => ['revenue', 'income', 'sales'].includes((a.account_type || '').toLowerCase())).reduce((s: number, a: any) => s + (a.balance || 0), 0);
+  const incomeAccounts = tb.filter((a: any) => ['revenue', 'income', 'sales'].includes((a.account_type || '').toLowerCase()));
+  const income = incomeAccounts.reduce((s: number, a: any) => s + (a.balance || 0), 0);
+  
+  console.log('Income accounts found:', incomeAccounts.map(a => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
+  console.log('Total income:', income);
   
   const isCogs = (a: any) => {
     const name = (a.account_name || '').toLowerCase();
     const code = String(a.account_code || '');
     const type = (a.account_type || '').toLowerCase();
-    return name.includes('cost of') || code.startsWith('5000') || type === 'cost of goods sold' || type === 'cogs';
+    return name.includes('cost of') || name.includes('goods sold') || code.startsWith('5000') || type === 'cost of goods sold' || type === 'cogs';
   };
 
-  const cogs = tb.filter((a: any) => ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes((a.account_type || '').toLowerCase()) && isCogs(a)).reduce((s: number, a: any) => s + (a.balance || 0), 0);
-  const opex = tb.filter((a: any) => ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes((a.account_type || '').toLowerCase()) && !isCogs(a)).reduce((s: number, a: any) => s + (a.balance || 0), 0);
+  const cogsAccounts = tb.filter((a: any) => ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes((a.account_type || '').toLowerCase()) && isCogs(a));
+  const cogs = cogsAccounts.reduce((s: number, a: any) => s + (a.balance || 0), 0);
+  
+  console.log('COGS accounts found:', cogsAccounts.map(a => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
+  console.log('Total COGS:', cogs);
+  
+  const opexAccounts = tb.filter((a: any) => ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes((a.account_type || '').toLowerCase()) && !isCogs(a));
+  const opex = opexAccounts.reduce((s: number, a: any) => s + (a.balance || 0), 0);
+  
+  console.log('OPEX accounts found:', opexAccounts.map(a => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
+  console.log('Total OPEX:', opex);
+  
   return { income, expenses: cogs + opex };
 };
 
@@ -201,6 +227,8 @@ const fetchTrialBalanceForPeriod = async (companyId: string, start: string, end:
     .lte('entry_date', endDateObj.toISOString());
   if (ledgerError) throw ledgerError;
 
+  console.log('[TrialBalance] Fetched ledger entries:', ledgerEntries?.length || 0, 'for period:', startDateObj.toISOString(), 'to', endDateObj.toISOString());
+
   // We also need "Opening Balances" if we want true BS positions.
   // Since we are refactoring for "consistency", let's make a quick adjustment:
   // Fetch opening balances from `trial_balance_summary` or `chart_of_accounts`?
@@ -211,14 +239,36 @@ const fetchTrialBalanceForPeriod = async (companyId: string, start: string, end:
   // I will keep the original logic for `fetchTrialBalanceForPeriod` to be safe, as changing financial logic is risky without specific instruction.
 
   const trialBalance: Array<{ account_id: string; account_code: string; account_name: string; account_type: string; balance: number; }> = [];
-  const ledgerTxIds = new Set<string>((ledgerEntries || []).map((e: any) => String(e.transaction_id || '')));
-  const filteredTxEntries = (txEntries || []).filter((e: any) => !ledgerTxIds.has(String(e.transaction_id || '')));
-
+  
+  // Debug: Log entry counts
+  console.log('txEntries count:', txEntries?.length || 0);
+  console.log('ledgerEntries count:', ledgerEntries?.length || 0);
+  
+  // Log all unique account types in trial balance
+  const accountTypes = new Set((accounts || []).map((a: any) => a.account_type));
+  console.log('Account types in chart_of_accounts:', Array.from(accountTypes));
+  
+  // SIMPLIFIED: Use only ledger_entries for trial balance calculation
+  // ledger_entries is the "posted" version - it's the authoritative source
+  // This avoids the duplicate issue from combining both tables
+  const entriesToUse = ledgerEntries || [];
+  
+  console.log('Using ledger entries only:', entriesToUse.length);
+  if (entriesToUse.length > 0) {
+    console.log('Sample ledger entries:', entriesToUse.slice(0, 3).map((e: any) => ({ account_id: e.account_id, debit: e.debit, credit: e.credit, entry_date: e.entry_date })));
+  }
+  
   (accounts || []).forEach((acc: any) => {
     let sumDebit = 0;
     let sumCredit = 0;
-    filteredTxEntries?.forEach((entry: any) => { if (entry.account_id === acc.id) { sumDebit += Number(entry.debit || 0); sumCredit += Number(entry.credit || 0); } });
-    ledgerEntries?.forEach((entry: any) => { if (entry.account_id === acc.id) { sumDebit += Number(entry.debit || 0); sumCredit += Number(entry.credit || 0); } });
+    
+    // Sum only from ledger_entries
+    entriesToUse.forEach((entry: any) => { 
+      if (entry.account_id === acc.id) { 
+        sumDebit += Number(entry.debit || 0); 
+        sumCredit += Number(entry.credit || 0); 
+      } 
+    });
     const type = (acc.account_type || '').toLowerCase();
     const naturalDebit = type === 'asset' || type === 'expense';
     const balance = naturalDebit ? (sumDebit - sumCredit) : (sumCredit - sumDebit);
@@ -253,7 +303,7 @@ export const useDashboardData = (
 
   // 2. Fetch from Supabase (Background) - This updates IndexedDB
   const query = useQuery({
-    queryKey: ['dashboard-data-fetch', cacheKey], // Unique key for fetching
+    queryKey: ['dashboard-data', cacheKey], // Include 'dashboard-data' base key for realtime invalidation to work
     queryFn: async (): Promise<DashboardData> => {
       const isDemo = isDemoMode();
       
@@ -359,7 +409,7 @@ export const useDashboardData = (
           const name = String(a.account_name || '').toLowerCase();
           const code = String(a.account_code || '');
           const isExpense = type === 'expense';
-          const isCogs = name.includes('cost of') || code.startsWith('5000');
+          const isCogs = name.includes('cost of') || name.includes('goods sold') || code.startsWith('5000');
           return isExpense && !isCogs;
         })
         .reduce((s: number, a: any) => s + Math.abs(Number(a.balance || 0)), 0);
@@ -370,6 +420,11 @@ export const useDashboardData = (
       const bsAssets = (trialBalance || []).filter((a: any) => String(a.account_type || '').toLowerCase() === 'asset').reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
       const bsLiabilities = (trialBalance || []).filter((a: any) => String(a.account_type || '').toLowerCase() === 'liability').reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
       const bsEquity = (trialBalance || []).filter((a: any) => String(a.account_type || '').toLowerCase() === 'equity').reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
+
+      console.log('Trial Balance - Assets:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase() === 'asset'));
+      console.log('Trial Balance - Liabilities:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase() === 'liability'));
+      console.log('Trial Balance - Equity:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase() === 'equity'));
+      console.log('Total Assets:', bsAssets, 'Total Liabilities:', bsLiabilities, 'Total Equity:', bsEquity);
 
       // Detailed BS Breakdown
       let bsCurrentAssets = 0;
@@ -390,8 +445,8 @@ export const useDashboardData = (
           if (code < 1500) bsCurrentAssets += bal;
           else bsNonCurrentAssets += bal;
         } else if (type === 'liability') {
-          // Convention: < 2500 is Current (AP, VAT, Short-term), >= 2500 is Non-Current (Loans)
-          if (code < 2500) bsCurrentLiabilities += bal;
+          // Convention: < 2400 is Current Liabilities (AP, VAT, Short-term up to 2300), >= 2400 is Non-Current (Loans 2400+, Mortgages, etc.)
+          if (code < 2400) bsCurrentLiabilities += bal;
           else bsNonCurrentLiabilities += bal;
         } else if (type === 'equity') {
           if (name.includes('retained') || name.includes('earnings')) bsEquityRetained += bal;
@@ -410,10 +465,31 @@ export const useDashboardData = (
         return ['revenue', 'income', 'sales'].includes(t);
       }).map((a: any) => ({ name: String(a.account_name || ''), value: Math.abs(Number(a.balance || 0)) }));
 
+      console.log('Income accounts for pie chart:', incomeAccounts);
+
       const expenseAccounts = (trialBalance || []).filter((a: any) => {
         const t = String(a.account_type || '').toLowerCase();
         return ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes(t);
-      }).map((a: any) => ({ name: String(a.account_name || ''), value: Math.abs(Number(a.balance || 0)) }));
+      }).map((a: any) => ({ 
+        name: String(a.account_name || ''), 
+        code: String(a.account_code || ''),
+        type: String(a.account_type || ''),
+        balance: a.balance,
+        value: Math.abs(Number(a.balance || 0)) 
+      }));
+
+      console.log('All expense accounts (for expense breakdown):', expenseAccounts);
+
+      // Separate COGS from OPE
+      const cogsAccounts = expenseAccounts.filter((a: any) => 
+        a.name.toLowerCase().includes('cost of') || 
+        a.name.toLowerCase().includes('goods sold') ||
+        a.code.startsWith('5000') ||
+        a.type.toLowerCase() === 'cost of goods sold' ||
+        a.type.toLowerCase() === 'cogs'
+      );
+      console.log('COGS accounts:', cogsAccounts);
+
       let incomeBreakdown = incomeAccounts.sort((a: any, b: any) => b.value - a.value).slice(0, 10);
       let expenseBreakdown = expenseAccounts.sort((a: any, b: any) => b.value - a.value).slice(0, 10);
 
@@ -429,12 +505,31 @@ export const useDashboardData = (
         months.push({ start: ms, end: me, label });
       }
 
-      const { data: teRange } = await supabase
-        .from('transaction_entries')
-        .select(`account_id, debit, credit, transactions!inner (transaction_date, company_id)`) 
-        .eq('transactions.company_id', cid)
-        .gte('transactions.transaction_date', months[0].start.toISOString())
-        .lte('transactions.transaction_date', months[months.length - 1].end.toISOString());
+      // Use ledger_entries for monthly charts to avoid duplicates
+      const { data: ledgerRange } = await supabase
+        .from('ledger_entries')
+        .select('account_id, debit, credit, entry_date')
+        .eq('company_id', cid)
+        .gte('entry_date', months[0].start.toISOString())
+        .lte('entry_date', months[months.length - 1].end.toISOString());
+
+      console.log('Ledger entries for monthly charts:', ledgerRange?.length || 0);
+
+      // Use ledger entries if available, otherwise fallback to transaction_entries
+      let entriesForCharts: any[] = ledgerRange || [];
+      if (!entriesForCharts || entriesForCharts.length === 0) {
+        const { data: txRange } = await supabase
+          .from('transaction_entries')
+          .select(`account_id, debit, credit, transactions!inner (transaction_date, company_id)`) 
+          .eq('transactions.company_id', cid)
+          .gte('transactions.transaction_date', months[0].start.toISOString())
+          .lte('transactions.transaction_date', months[months.length - 1].end.toISOString())
+          .in('transactions.status', ['posted', 'approved', 'pending']);
+        entriesForCharts = txRange || [];
+      }
+
+      // Use entry_date for ledger, transaction_date for transaction_entries
+      const getEntryDate = (e: any) => e.entry_date ? new Date(String(e.entry_date)) : new Date(String(e.transactions?.transaction_date || new Date()));
 
       const { data: accountsAll } = await supabase
         .from('chart_of_accounts')
@@ -451,8 +546,8 @@ export const useDashboardData = (
         buckets[key] = { income: 0, expenses: 0, cogs: 0, opex: 0, label: m.label }; 
       });
       
-      (teRange || []).forEach((e: any) => {
-        const dt = new Date(String(e.transactions?.transaction_date || new Date()));
+      (entriesForCharts || []).forEach((e: any) => {
+        const dt = getEntryDate(e);
         const key = `${dt.getFullYear()}-${dt.getMonth()}`;
         if (!buckets[key]) return;
         const id = String(e.account_id || '');
@@ -469,7 +564,7 @@ export const useDashboardData = (
         } else if (isExpense) {
           const val = Math.abs(debit - credit);
           buckets[key].expenses += val;
-          const isCogs = name.includes('cost of') || String(code).startsWith('5000');
+          const isCogs = name.includes('cost of') || name.includes('goods sold') || String(code).startsWith('5000');
           if (isCogs) buckets[key].cogs += val;
           else buckets[key].opex += val;
         }
@@ -551,8 +646,8 @@ export const useDashboardData = (
         bsMovements[key] = { assets: 0, liabilities: 0, equity: 0, label: m.label }; 
       });
 
-      (teRange || []).forEach((e: any) => {
-        const dt = new Date(String(e.transactions?.transaction_date || new Date()));
+      (entriesForCharts || []).forEach((e: any) => {
+        const dt = getEntryDate(e);
         const key = `${dt.getFullYear()}-${dt.getMonth()}`;
         if (!bsMovements[key]) return;
         const id = String(e.account_id || '');
@@ -887,19 +982,19 @@ export const useDashboardData = (
 
       return finalData;
     },
-    staleTime: 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 0, // Always fetch fresh data, no caching of network requests
+    gcTime: 5 * 60 * 1000, // Keep unused data in cache for 5 minutes
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: true,
-    refetchOnMount: false,
+    refetchOnMount: true, // Changed to true to ensure we always get fresh data
   });
 
   // Return logic:
-  // 1. If we have cached data from DB, use it (Instant Load).
-  // 2. If not, use query data (Network Load).
+  // 1. Always prefer query data (fresh from network) over cached data.
+  // 2. Only use cachedData as fallback if query has no data yet.
   // 3. Status flags should reflect whether we are showing *something* or nothing.
   
-  const data = cachedData || query.data;
+  const data = query.data || cachedData;
   
   // We are "loading" if we have NO data from either source and the query is pending.
   // If we have cached data, we are technically "loading in background" (isFetching), but not "loading" (blocking).

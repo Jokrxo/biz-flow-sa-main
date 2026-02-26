@@ -391,11 +391,12 @@ export const DashboardOverview = () => {
     }
   } = data;
 
-  const metricCards = [
+  const metricCards: any[] = [
     {
       title: "Total Assets",
       amount: metrics.totalAssets,
       prefix: "R ",
+      suffix: "",
       icon: Building2,
       color: "text-blue-600",
       gradient: "bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-background border-blue-200/50"
@@ -404,6 +405,7 @@ export const DashboardOverview = () => {
       title: "Total Liabilities",
       amount: metrics.totalLiabilities,
       prefix: "R ",
+      suffix: "",
       icon: FileText,
       color: "text-red-600",
       gradient: "bg-gradient-to-br from-red-500/10 via-red-500/5 to-background border-red-200/50"
@@ -412,6 +414,7 @@ export const DashboardOverview = () => {
       title: "Total Equity",
       amount: metrics.totalAssets - metrics.totalLiabilities,
       prefix: "R ",
+      suffix: "",
       icon: Briefcase,
       color: "text-purple-600",
       gradient: "bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-background border-purple-200/50"
@@ -420,6 +423,7 @@ export const DashboardOverview = () => {
       title: "Total Income",
       amount: metrics.totalIncome,
       prefix: "R ",
+      suffix: "",
       icon: TrendingUp,
       color: "text-emerald-600",
       gradient: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-background border-emerald-200/50"
@@ -427,20 +431,21 @@ export const DashboardOverview = () => {
     {
       title: "Operating Expenses",
       amount: metrics.operatingExpenses,
-      prefix: "(R ",
-      suffix: ")",
-      icon: TrendingDown,
-      color: "text-amber-600",
-      gradient: "bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-background border-amber-200/50"
+      prefix: "R ",
+      suffix: "",
+      icon: Receipt,
+      color: "text-orange-600",
+      gradient: "bg-gradient-to-br from-orange-500/10 via-orange-500/5 to-background border-orange-200/50"
     },
     {
       title: "Bank Balance",
       amount: metrics.bankBalance,
       prefix: "R ",
+      suffix: "",
       icon: CreditCard,
       color: "text-cyan-600",
       gradient: "bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-background border-cyan-200/50"
-    }
+    },
   ];
 
   const COLORS = [
@@ -670,7 +675,7 @@ export const DashboardOverview = () => {
                   <CountUp 
                     end={metric.amount} 
                     prefix={metric.prefix} 
-                    suffix={metric.suffix} 
+                    suffix={metric.suffix || ''} 
                     decimals={2} 
                     duration={800} 
                   />
