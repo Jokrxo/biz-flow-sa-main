@@ -25,7 +25,7 @@ import {
 import { 
   TrendingUp, FileText, Plus, Download, Mail, ArrowRight, 
   Search, Filter, ChevronDown, Trash2, Printer, RefreshCw, MoreVertical, Copy, Eye, FileEdit,
-  FileSpreadsheet, Settings, AlertTriangle, XCircle, Check, ArrowUpDown
+  FileSpreadsheet, Settings, AlertTriangle, XCircle, Check, ArrowUpDown, History
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -245,6 +245,92 @@ export const SalesQuotes = () => {
       toast({ title: 'Success', description: 'Quote PDF downloaded' });
     } catch (e: any) {
       toast({ title: 'Error', description: e.message || 'Failed to download quote PDF', variant: 'destructive' });
+    }
+  };
+
+  // Handle print quote (opens print dialog)
+  const handlePrintQuote = async (q: any) => {
+    try {
+      const [company, items] = await Promise.all([
+        fetchCompanyForPDF(),
+        fetchQuoteItemsForPDF(q.id),
+      ]);
+      const dto = mapQuoteForPDF(q);
+      const doc = buildQuotePDF(dto, items as QuoteItemForPDF[], company);
+      const logoDataUrl = await fetchLogoDataUrl(company.logo_url);
+      if (logoDataUrl) addLogoToPDF(doc, logoDataUrl);
+      
+      // Open print dialog
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast({ title: 'Error', description: 'Could not open print window', variant: 'destructive' });
+        return;
+      }
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      printWindow.document.write(`
+        <html>
+          <head><title>Print Quote ${q.quote_number}</title></head>
+          <body style="margin:0;">
+            <iframe src="${pdfUrl}" style="width:100%;height:100%;" onload="this.contentWindow.print();"></iframe>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Failed to print quote', variant: 'destructive' });
+    }
+  };
+
+  // Load quote items for editing
+  const loadQuoteItemsForEdit = async (quoteId: string) => {
+    const { data: items } = await supabase
+      .from('quote_items')
+      .select('product_id, description, quantity, unit_price, tax_rate, item_type')
+      .eq('quote_id', quoteId);
+    return items || [];
+  };
+
+  // Handle edit quote
+  const handleEditQuote = async (q: any) => {
+    try {
+      const items = await loadQuoteItemsForEdit(q.id);
+      setFormData({
+        customer_name: q.customer_name || '',
+        customer_email: q.customer_email || '',
+        quote_date: q.quote_date || new Date().toISOString().split('T')[0],
+        expiry_date: q.expiry_date || '',
+        notes: q.notes || '',
+      });
+      setItemsForm(items.length > 0 ? items.map((item: any) => ({
+        product_id: item.product_id || '',
+        description: item.description || '',
+        quantity: item.quantity || 1,
+        unit_price: item.unit_price || 0,
+        tax_rate: item.tax_rate || 15,
+        item_type: item.item_type || 'product'
+      })) : [{ product_id: '', description: '', quantity: 1, unit_price: 0, tax_rate: 15, item_type: 'product' }]);
+      setSelectedQuote(q);
+      setIsEditMode(true);
+      setDialogOpen(true);
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to load quote for editing', variant: 'destructive' });
+    }
+  };
+
+  // Handle view quote history
+  const handleViewHistory = async (q: any) => {
+    try {
+      const { data: history } = await supabase
+        .from('quote_history')
+        .select('*')
+        .eq('quote_id', q.id)
+        .order('created_at', { ascending: false });
+      setHistoryData(history || []);
+      setSelectedQuote(q);
+      setHistoryDialogOpen(true);
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to load quote history', variant: 'destructive' });
     }
   };
 
@@ -842,11 +928,18 @@ export const SalesQuotes = () => {
                         <DropdownMenuItem onClick={() => handleDownloadQuote(quote)}>
                           <Eye className="mr-2 h-4 w-4" /> Preview
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDownloadQuote(quote)}>
+                        <DropdownMenuItem onClick={() => handlePrintQuote(quote)}>
                           <Printer className="mr-2 h-4 w-4" /> Print
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewHistory(quote)}>
+                          <History className="mr-2 h-4 w-4" /> View History
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openSendDialog(quote)} disabled={!quote.customer_email}>
                           <Mail className="mr-2 h-4 w-4" /> Email
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleEditQuote(quote)}>
+                          <FileEdit className="mr-2 h-4 w-4" /> Edit Quote
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           disabled={quote.status === 'converted'}
@@ -1128,17 +1221,39 @@ export const SalesQuotes = () => {
                 setCannotEditOpen(true);
                 return;
               }
-              const total = parseFloat(formData.total_amount);
+              // Calculate totals from itemsForm
+              const subtotal = itemsForm.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+              const taxAmount = itemsForm.reduce((sum, item) => sum + (item.quantity * item.unit_price * (item.tax_rate / 100)), 0);
+              const total = subtotal + taxAmount;
+              
               const { error } = await supabase.from('quotes').update({
                 customer_name: formData.customer_name,
                 customer_email: formData.customer_email || null,
                 quote_date: formData.quote_date,
                 expiry_date: formData.expiry_date || null,
                 total_amount: total,
-                subtotal: total / 1.15,
-                tax_amount: (total * 0.15) / 1.15,
+                subtotal: subtotal,
+                tax_amount: taxAmount,
+                notes: formData.notes || null,
               }).eq('id', selectedQuote.id);
               if (error) throw error;
+              
+              // Delete existing items and re-insert
+              await supabase.from('quote_items').delete().eq('quote_id', selectedQuote.id);
+              
+              const newItems = itemsForm.map((item: any) => ({
+                quote_id: selectedQuote.id,
+                product_id: item.product_id,
+                description: item.description,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                tax_rate: item.tax_rate,
+                item_type: item.item_type || 'product'
+              }));
+              
+              const { error: itemsError } = await supabase.from('quote_items').insert(newItems);
+              if (itemsError) throw itemsError;
+              
               toast({ title: 'Updated', description: 'Quote updated successfully' });
               setDialogOpen(false);
               setIsEditMode(false);
@@ -1526,17 +1641,30 @@ export const SalesQuotes = () => {
       </Dialog>
 
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>Quote History</DialogTitle>
+            <DialogTitle>Quote History - {selectedQuote?.quote_number}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <div>Created: {historyData?.created_at ? new Date(historyData.created_at).toLocaleString() : '-'}</div>
-            <div>Last Updated: {historyData?.updated_at ? new Date(historyData.updated_at).toLocaleString() : '-'}</div>
-            <div>Status: {historyData?.status || '-'}</div>
-            <div>
-              Linked Invoice: {historyData?.invoice ? `${historyData.invoice.invoice_number} (${historyData.invoice.status})` : 'None'}
-            </div>
+          <div className="max-h-[400px] overflow-y-auto space-y-3">
+            {historyData && historyData.length > 0 ? (
+              historyData.map((record: any, index: number) => (
+                <div key={index} className="border rounded p-3 text-sm">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium">
+                      {record.action || record.change_type || 'Update'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {record.created_at ? new Date(record.created_at).toLocaleString() : '-'}
+                    </span>
+                  </div>
+                  <div className="text-gray-600">
+                    {record.details || record.description || 'No details'}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-gray-500 text-center py-4">No history records found</div>
+            )}
           </div>
           <div className="flex justify-end">
             <Button onClick={() => setHistoryDialogOpen(false)}>Close</Button>
