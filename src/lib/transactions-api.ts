@@ -427,11 +427,12 @@ export const transactionsApi = {
       arId = (created as any)?.id || '';
     }
 
-    // Find or create Sales Revenue (4000)
+    // Find or create Sales Revenue (4000) - search for both 'income' and 'revenue' types
     let revId = findBy('income', ['4000'], ['revenue', 'sales']);
+    if (!revId) revId = findBy('revenue', ['4000'], ['revenue', 'sales']);
     if (!revId) {
       const { data: created } = await supabase.from('chart_of_accounts')
-        .insert({ company_id: companyId, account_code: '4000', account_name: 'Sales Revenue', account_type: 'revenue', is_active: true, normal_balance: 'credit' })
+        .insert({ company_id: companyId, account_code: '4000', account_name: 'Sales Revenue', account_type: 'income', is_active: true, normal_balance: 'credit' })
         .select('id').single();
       revId = (created as any)?.id || '';
     }

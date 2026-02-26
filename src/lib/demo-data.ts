@@ -138,9 +138,9 @@ const ensureCoa = async (companyId: string) => {
     { code: '2100', name: 'VAT Payable', type: 'liability' },
     { code: '2200', name: 'Bank Loan', type: 'liability' },
     { code: '3100', name: 'Retained Earnings', type: 'equity' },
-    { code: '4000', name: 'Sales Revenue', type: 'revenue' },
-    { code: '4200', name: 'Interest Income', type: 'revenue' },
-    { code: '4205', name: 'Dividend Income', type: 'revenue' },
+    { code: '4000', name: 'Sales Revenue', type: 'income' },
+    { code: '4200', name: 'Interest Income', type: 'income' },
+    { code: '4205', name: 'Dividend Income', type: 'income' },
     { code: '5000', name: 'Cost of Sales', type: 'expense' },
     { code: '5600', name: 'Operating Expenses', type: 'expense' },
   ];

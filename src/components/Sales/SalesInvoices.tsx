@@ -1690,6 +1690,11 @@ export const SalesInvoices = () => {
                                           <DropdownMenuItem onClick={() => openSendDialog(invoice)}>
                                               <Mail className="h-4 w-4 mr-2" /> Email Tax Invoice
                                           </DropdownMenuItem>
+                                          {canEdit && invoice.status === 'draft' && (
+                                            <DropdownMenuItem className="text-green-600 font-medium" onClick={() => { setSentInvoice(invoice); setSentDate(todayStr); setSentDialogOpen(true); }}>
+                                              <Check className="h-4 w-4 mr-2" /> Post Invoice
+                                            </DropdownMenuItem>
+                                          )}
                                           <DropdownMenuSeparator />
                                           {canEdit && invoice.status !== "paid" && invoice.status !== "cancelled" && (
                                             <DropdownMenuItem onClick={() => handleEditInvoice(invoice)}>
