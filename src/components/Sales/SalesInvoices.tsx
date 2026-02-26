@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,7 @@ export const SalesInvoices = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const { isAdmin, isAccountant } = useRoles();
+  const navigate = useNavigate();
   const todayStr = new Date().toISOString().split("T")[0];
   const [posting, setPosting] = useState(false);
   const [lastPosting, setLastPosting] = useState<string | null>(null);
@@ -124,6 +126,13 @@ export const SalesInvoices = () => {
   const [sending, setSending] = useState<boolean>(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [companyEmail, setCompanyEmail] = useState<string>('');
+
+  // Edit/Copy/History dialog state
+  const [editingInvoice, setEditingInvoice] = useState<any>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [invoiceHistory, setInvoiceHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Payment dialog state
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -357,6 +366,13 @@ export const SalesInvoices = () => {
       toast({ title: "Invalid due date", description: "Due date cannot be earlier than invoice date.", variant: "destructive" });
       return;
     }
+
+    // Handle edit mode
+    if (isEditMode && editingInvoice) {
+      await handleUpdateInvoice();
+      return;
+    }
+
     setDialogOpen(false);
     try {
       setIsSubmitting(true);
@@ -472,6 +488,68 @@ export const SalesInvoices = () => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
       setIsSubmitting(false);
       setDialogOpen(true);
+    }
+  };
+
+  // Handle update invoice (edit mode)
+  const handleUpdateInvoice = async () => {
+    if (!editingInvoice) return;
+    
+    setDialogOpen(false);
+    setIsSubmitting(true);
+    setProgress(10);
+    setProgressText("Updating Invoice...");
+    
+    try {
+      // Calculate totals
+      const subtotal = formData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unit_price), 0);
+      const taxAmount = formData.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unit_price * (item.tax_rate / 100)), 0);
+      const total = subtotal + taxAmount;
+      
+      // Update invoice
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          customer_name: formData.customer_name,
+          customer_email: formData.customer_email || null,
+          invoice_date: formData.invoice_date,
+          due_date: formData.due_date || null,
+          subtotal: subtotal,
+          tax_amount: taxAmount,
+          total_amount: total,
+          notes: formData.notes || null
+        })
+        .eq('id', editingInvoice.id);
+      
+      if (updateError) throw updateError;
+      
+      // Delete existing items and re-insert
+      await supabase.from('invoice_items').delete().eq('invoice_id', editingInvoice.id);
+      
+      const items = formData.items.map((item: any) => ({
+        invoice_id: editingInvoice.id,
+        product_id: item.product_id,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        tax_rate: item.tax_rate
+      }));
+      
+      const { error: itemsError } = await supabase.from('invoice_items').insert(items);
+      if (itemsError) throw itemsError;
+      
+      toast({ title: 'Success', description: 'Invoice updated successfully' });
+      setIsEditMode(false);
+      setEditingInvoice(null);
+      resetForm();
+      loadData();
+    } catch (error: any) {
+      console.error('Error updating invoice:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to update invoice', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
+      setProgress(0);
+      setProgressText("");
     }
   };
 
@@ -1004,6 +1082,173 @@ export const SalesInvoices = () => {
     setSendDialogOpen(true);
   };
 
+  // Load invoice items for editing/copying
+  const loadInvoiceItemsForEdit = async (invoiceId: string) => {
+    const { data: items } = await supabase
+      .from('invoice_items')
+      .select('product_id, description, quantity, unit_price, tax_rate')
+      .eq('invoice_id', invoiceId);
+    return items || [];
+  };
+
+  // Handle edit invoice
+  const handleEditInvoice = async (inv: any) => {
+    try {
+      const items = await loadInvoiceItemsForEdit(inv.id);
+      setFormData({
+        customer_name: inv.customer_name || '',
+        customer_email: inv.customer_email || '',
+        invoice_date: inv.invoice_date || new Date().toISOString().split('T')[0],
+        due_date: inv.due_date || '',
+        notes: inv.notes || '',
+        items: items.length > 0 ? items.map((item: any) => ({
+          product_id: item.product_id || '',
+          description: item.description || '',
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price || 0,
+          tax_rate: item.tax_rate || 15
+        })) : [{ product_id: '', description: '', quantity: 1, unit_price: 0, tax_rate: isVatRegistered ? 15 : 0 }]
+      });
+      setEditingInvoice(inv);
+      setIsEditMode(true);
+      setDialogOpen(true);
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to load invoice for editing', variant: 'destructive' });
+    }
+  };
+
+  // Handle copy invoice (create new from existing)
+  const handleCopyInvoice = async (inv: any) => {
+    try {
+      const items = await loadInvoiceItemsForEdit(inv.id);
+      setFormData({
+        customer_name: inv.customer_name || '',
+        customer_email: inv.customer_email || '',
+        invoice_date: new Date().toISOString().split('T')[0],
+        due_date: '',
+        notes: inv.notes || '',
+        items: items.length > 0 ? items.map((item: any) => ({
+          product_id: item.product_id || '',
+          description: item.description || '',
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price || 0,
+          tax_rate: item.tax_rate || 15
+        })) : [{ product_id: '', description: '', quantity: 1, unit_price: 0, tax_rate: isVatRegistered ? 15 : 0 }]
+      });
+      setEditingInvoice(null);
+      setIsEditMode(false);
+      setInvoiceTypeDialogOpen(false);
+      setDialogOpen(true);
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to copy invoice', variant: 'destructive' });
+    }
+  };
+
+  // Handle view history
+  const handleViewHistory = async (inv: any) => {
+    setLoadingHistory(true);
+    setHistoryDialogOpen(true);
+    try {
+      // Build history from the invoice data we already have
+      const historyEvents = [];
+      
+      // Add creation event
+      historyEvents.push({ 
+        date: inv.created_at || inv.invoice_date, 
+        action: 'Invoice Created', 
+        details: `Invoice ${inv.invoice_number} was created - Status: ${inv.status}` 
+      });
+      
+      // Add sent event if applicable
+      if (inv.sent_at) {
+        historyEvents.push({ date: inv.sent_at, action: 'Invoice Sent', details: `Invoice was marked as sent` });
+      }
+      
+      // Add paid event if applicable
+      if (inv.paid_at) {
+        historyEvents.push({ date: inv.paid_at, action: 'Payment Received', details: `Invoice was marked as paid` });
+      }
+      
+      // Add current status
+      historyEvents.push({ 
+        date: new Date().toISOString(), 
+        action: 'Current Status', 
+        details: `Current status: ${inv.status}` 
+      });
+      
+      setInvoiceHistory(historyEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    } catch (error) {
+      console.error('Error loading history:', error);
+      setInvoiceHistory([]);
+    }
+    setLoadingHistory(false);
+  };
+
+  // Handle print delivery note
+  const handlePrintDeliveryNote = (inv: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast({ title: 'Error', description: 'Could not open print window', variant: 'destructive' });
+      return;
+    }
+    
+    const content = `
+      <html>
+        <head>
+          <title>Delivery Note - ${inv.invoice_number}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .invoice-number { font-size: 24px; font-weight: bold; }
+            .info { margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f5f5f5; }
+            .footer { margin-top: 30px; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>DELIVERY NOTE</h1>
+            <div class="invoice-number">${inv.invoice_number}</div>
+          </div>
+          <div class="info">
+            <p><strong>Customer:</strong> ${inv.customer_name}</p>
+            <p><strong>Date:</strong> ${inv.invoice_date}</p>
+            <p><strong>Due Date:</strong> ${inv.due_date || 'N/A'}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Quantity</th>
+                <th>Unit Price</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(inv.items || []).map((item: any) => `
+                <tr>
+                  <td>${item.description || item.product?.name || 'Product'}</td>
+                  <td>${item.quantity}</td>
+                  <td>R ${(item.unit_price || 0).toFixed(2)}</td>
+                  <td>R ${((item.quantity || 0) * (item.unit_price || 0)).toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="footer">
+            <p>Thank you for your business!</p>
+          </div>
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(content);
+    printWindow.document.close();
+  };
+
   const handleSendEmail = async () => {
     if (!selectedInvoice) return;
     if (isDateLocked(selectedInvoice.invoice_date)) {
@@ -1300,11 +1545,11 @@ export const SalesInvoices = () => {
                                           </DropdownMenuItem>
                                           <DropdownMenuSeparator />
                                           {canEdit && invoice.status !== "paid" && invoice.status !== "cancelled" && (
-                                            <DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleEditInvoice(invoice)}>
                                                 <FileText className="h-4 w-4 mr-2" /> Edit Tax Invoice
                                             </DropdownMenuItem>
                                           )}
-                                          <DropdownMenuItem onClick={() => window.location.href = '/sales?tab=receipts&action=create-receipt'}>
+                                          <DropdownMenuItem onClick={() => navigate('/sales?tab=receipts&action=create-receipt')}>
                                               <Receipt className="h-4 w-4 mr-2" /> Create Receipt
                                           </DropdownMenuItem>
                                           {canEdit && (
@@ -1312,13 +1557,13 @@ export const SalesInvoices = () => {
                                                   <FileText className="h-4 w-4 mr-2" /> Create Credit Note
                                               </DropdownMenuItem>
                                           )}
-                                          <DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleCopyInvoice(invoice)}>
                                               <Copy className="h-4 w-4 mr-2" /> Copy Tax Invoice
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handlePrintDeliveryNote(invoice)}>
                                               <FileText className="h-4 w-4 mr-2" /> Print Delivery Note
                                           </DropdownMenuItem>
-                                          <DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => handleViewHistory(invoice)}>
                                               <History className="h-4 w-4 mr-2" /> View History
                                           </DropdownMenuItem>
                                       </DropdownMenuContent>
@@ -1567,8 +1812,8 @@ export const SalesInvoices = () => {
               </div>
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>Cancel</Button>
-                <Button type="submit" className="bg-gradient-primary">Create Invoice</Button>
+                <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); resetForm(); setIsEditMode(false); setEditingInvoice(null); }}>Cancel</Button>
+                <Button type="submit" className="bg-gradient-primary">{isEditMode ? 'Update Invoice' : 'Create Invoice'}</Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -1770,6 +2015,49 @@ export const SalesInvoices = () => {
                   </>
                 )}
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Invoice History Dialog */}
+        <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Invoice History
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="py-4">
+              {loadingHistory ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : invoiceHistory.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No history available</p>
+              ) : (
+                <div className="space-y-3">
+                  {invoiceHistory.map((event, index) => (
+                    <div key={index} className="flex gap-3 p-3 border rounded-lg">
+                      <div className="shrink-0">
+                        <div className="h-2 w-2 rounded-full bg-primary mt-2" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium">{event.action}</div>
+                        <div className="text-sm text-muted-foreground">{event.details}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {new Date(event.date).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setHistoryDialogOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
