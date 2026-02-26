@@ -49,15 +49,15 @@ export default function SalesPage({ tab: initialTab }: { tab?: string }) {
       setActiveTab(tabParam);
     }
     
-    // Handle create-receipt action
+    // Handle create-receipt action - only if not already on receipts tab with dialog open
     const actionParam = new URLSearchParams(location.search).get('action');
-    if (actionParam === 'create-receipt') {
+    if (actionParam === 'create-receipt' && !receiptDialogOpen) {
       setActiveTab('receipts');
       setReceiptDialogOpen(true);
       // Clear the URL parameter after handling
       navigate('/sales?tab=receipts', { replace: true });
     }
-  }, [location.search, activeTab, navigate]);
+  }, [location.search, activeTab, navigate, receiptDialogOpen]);
 
   return (
     <>
