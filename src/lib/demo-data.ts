@@ -131,6 +131,7 @@ export const seedDemoData = () => {
 const ensureCoa = async (companyId: string) => {
   const defs = [
     { code: '1100', name: 'Bank - Current Account', type: 'asset' },
+    { code: '1200', name: 'Accounts Receivable', type: 'asset' },
     { code: '1300', name: 'Inventory', type: 'asset' },
     { code: '1400', name: 'Investment Assets', type: 'asset' },
     { code: '1920', name: 'Long-term Investments', type: 'asset' },

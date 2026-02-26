@@ -418,13 +418,29 @@ export const transactionsApi = {
       return byName?.id || null;
     };
 
-    const arId = findBy('asset', ['1200'], ['receiv', 'accounts receiv']);
-    const revId = findBy('income', ['4000'], ['revenue', 'sales']);
+    // Find or create Accounts Receivable (1200)
+    let arId = findBy('asset', ['1200'], ['receiv', 'accounts receiv']);
+    if (!arId) {
+      const { data: created } = await supabase.from('chart_of_accounts')
+        .insert({ company_id: companyId, account_code: '1200', account_name: 'Accounts Receivable', account_type: 'asset', is_active: true, normal_balance: 'debit' })
+        .select('id').single();
+      arId = (created as any)?.id || '';
+    }
+
+    // Find or create Sales Revenue (4000)
+    let revId = findBy('income', ['4000'], ['revenue', 'sales']);
+    if (!revId) {
+      const { data: created } = await supabase.from('chart_of_accounts')
+        .insert({ company_id: companyId, account_code: '4000', account_name: 'Sales Revenue', account_type: 'revenue', is_active: true, normal_balance: 'credit' })
+        .select('id').single();
+      revId = (created as any)?.id || '';
+    }
+
     let vatOutId = findBy('liability', ['2200','2100'], ['vat output', 'vat payable', 'output tax']);
     let cogsId = findBy('expense', ['5000'], ['cost of sales', 'cost of goods', 'cogs']);
     let inventoryId = findBy('asset', ['1300'], ['inventory', 'stock']);
 
-    if (!arId || !revId) throw new Error('Core accounts missing: AR or Revenue');
+    if (!arId || !revId) throw new Error('Failed to create core accounts: AR or Revenue');
     
     console.log('Found accounts:', { arId, revId, vatOutId, cogsId, inventoryId });
     console.log('Available accounts in database:', list.map(a => ({ code: a.code, name: a.name, type: a.type })));
