@@ -1357,9 +1357,15 @@ export const GAAPFinancialStatements = ({
         const sum = (arr: any[]) => (arr || []).reduce((s, e) => s + Number(e.balance || 0), 0);
 
         // Calculate YTD Net Profit from tbAsOf for Retained Earnings adjustment
-        const ytdRevenue = sum((tbAsOf || []).filter((x: any) => String(x.account_type || '').toLowerCase() === 'revenue' || String(x.account_type || '').toLowerCase() === 'income'));
-        const ytdExpenses = sum((tbAsOf || []).filter((x: any) => String(x.account_type || '').toLowerCase() === 'expense' && !String(x.account_name || '').toLowerCase().includes('vat')));
-        const ytdNetProfit = ytdRevenue - ytdExpenses;
+        // Must use same formula as period net profit (grossProfit - opex)
+        // Calculate from tbAsOf (YTD trial balance)
+        const revenueYTD = sum((tbAsOf || []).filter((x: any) => String(x.account_type || '').toLowerCase() === 'revenue' || String(x.account_type || '').toLowerCase() === 'income'));
+        const expenseYTD = (tbAsOf || []).filter((x: any) => String(x.account_type || '').toLowerCase() === 'expense' && !String(x.account_name || '').toLowerCase().includes('vat'));
+        const costOfSalesYTD = sum(expenseYTD.filter((x: any) => String(x.account_name || '').toLowerCase().includes('cost of') || String(x.account_code || '').startsWith('50')));
+        const opexYTD = sum(expenseYTD.filter((x: any) => !String(x.account_name || '').toLowerCase().includes('cost of') && !String(x.account_code || '').startsWith('50') && !String(x.account_code || '').startsWith('5600') && !String(x.account_name || '').toLowerCase().includes('depreciation')));
+        const depYTD = sum((tbAsOf || []).filter((x: any) => String(x.account_type || '').toLowerCase() === 'expense' && (String(x.account_name || '').toLowerCase().includes('depreciation') || String(x.account_code || '') === '5600')));
+        const grossProfitYTD = revenueYTD - (costOfSalesYTD > 0 ? costOfSalesYTD : cogs);
+        const ytdNetProfit = grossProfitYTD - (opexYTD + depYTD);
 
         const equityItems = (tbAsOf || [])
           .filter((x: any) => toLower(x.account_type) === 'equity')
@@ -1426,8 +1432,8 @@ export const GAAPFinancialStatements = ({
              })),
              tbBalance: sum(tbAsOf || []),
              retainedEarningsCalcs: {
-                ytdRevenue,
-                ytdExpenses,
+                ytdRevenue: revenueYTD,
+                ytdExpenses: costOfSalesYTD + opexYTD + depYTD,
                 ytdNetProfit,
                 retainedOpeningYTD: openingREForMonth
              }
