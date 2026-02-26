@@ -1185,12 +1185,47 @@ export const SalesInvoices = () => {
   };
 
   // Handle print delivery note
-  const handlePrintDeliveryNote = (inv: any) => {
+  const handlePrintDeliveryNote = async (inv: any) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       toast({ title: 'Error', description: 'Could not open print window', variant: 'destructive' });
       return;
     }
+    
+    // Fetch invoice items if not already loaded
+    let items = inv.items || [];
+    if (!items.length && inv.id) {
+      const { data: fetchedItems } = await supabase
+        .from('invoice_items')
+        .select('*, product:products(name)')
+        .eq('invoice_id', inv.id);
+      items = fetchedItems || [];
+    }
+    
+    const taxRate = 15;
+    
+    // Calculate line totals with tax
+    const itemsWithTax = items.map((item: any, index: number) => {
+      const quantity = item.quantity || 0;
+      const unitPrice = item.unit_price || 0;
+      const subtotal = quantity * unitPrice;
+      const tax = subtotal * (taxRate / 100);
+      const total = subtotal + tax;
+      return {
+        lineNumber: index + 1,
+        description: item.description || item.product?.name || 'Product/Service',
+        quantity,
+        unitPrice,
+        taxRate,
+        tax,
+        total
+      };
+    });
+    
+    // Calculate grand totals
+    const grandSubtotal = itemsWithTax.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+    const grandTax = itemsWithTax.reduce((sum: number, item: any) => sum + item.tax, 0);
+    const grandTotal = grandSubtotal + grandTax;
     
     const content = `
       <html>
@@ -1201,10 +1236,17 @@ export const SalesInvoices = () => {
             .header { text-align: center; margin-bottom: 30px; }
             .invoice-number { font-size: 24px; font-weight: bold; }
             .info { margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f5f5f5; }
-            .footer { margin-top: 30px; text-align: center; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .totals { margin-top: 20px; }
+            .totals-table { width: 300px; margin-left: auto; }
+            .totals-table td { padding: 8px; }
+            .totals-table .total-row { font-weight: bold; font-size: 1.1em; }
+            .footer { margin-top: 50px; text-align: center; }
+            .company-info { margin-bottom: 20px; padding: 10px; background: #f9f9f9; }
           </style>
         </head>
         <body>
@@ -1212,33 +1254,57 @@ export const SalesInvoices = () => {
             <h1>DELIVERY NOTE</h1>
             <div class="invoice-number">${inv.invoice_number}</div>
           </div>
-          <div class="info">
+          
+          <div class="company-info">
             <p><strong>Customer:</strong> ${inv.customer_name}</p>
+            <p><strong>Email:</strong> ${inv.customer_email || 'N/A'}</p>
             <p><strong>Date:</strong> ${inv.invoice_date}</p>
             <p><strong>Due Date:</strong> ${inv.due_date || 'N/A'}</p>
           </div>
+          
           <table>
             <thead>
               <tr>
+                <th class="text-center" style="width: 50px;">#</th>
                 <th>Description</th>
-                <th>Quantity</th>
-                <th>Unit Price</th>
-                <th>Total</th>
+                <th class="text-right" style="width: 80px;">Qty</th>
+                <th class="text-right" style="width: 120px;">Price</th>
+                <th class="text-right" style="width: 80px;">Tax (15%)</th>
+                <th class="text-right" style="width: 120px;">Total</th>
               </tr>
             </thead>
             <tbody>
-              ${(inv.items || []).map((item: any) => `
+              ${itemsWithTax.map((item: any) => `
                 <tr>
-                  <td>${item.description || item.product?.name || 'Product'}</td>
-                  <td>${item.quantity}</td>
-                  <td>R ${(item.unit_price || 0).toFixed(2)}</td>
-                  <td>R ${((item.quantity || 0) * (item.unit_price || 0)).toFixed(2)}</td>
+                  <td class="text-center">${item.lineNumber}</td>
+                  <td>${item.description}</td>
+                  <td class="text-right">${item.quantity}</td>
+                  <td class="text-right">R ${item.unitPrice.toFixed(2)}</td>
+                  <td class="text-right">R ${item.tax.toFixed(2)}</td>
+                  <td class="text-right">R ${item.total.toFixed(2)}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
+          
+          <table class="totals-table">
+            <tr>
+              <td>Subtotal:</td>
+              <td class="text-right">R ${grandSubtotal.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td>Tax (15% VAT):</td>
+              <td class="text-right">R ${grandTax.toFixed(2)}</td>
+            </tr>
+            <tr class="total-row">
+              <td>Total:</td>
+              <td class="text-right">R ${grandTotal.toFixed(2)}</td>
+            </tr>
+          </table>
+          
           <div class="footer">
             <p>Thank you for your business!</p>
+            <p><small>This is a computer-generated document. No signature required.</small></p>
           </div>
           <script>window.onload = function() { window.print(); }</script>
         </body>
