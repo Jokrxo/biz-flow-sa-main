@@ -63,9 +63,9 @@ export const SalesReceipts = ({
     }
   };
 
-  // Open dialog when external prop changes
+  // Open dialog when external prop changes to true (only once)
   useEffect(() => {
-    if (externalDialogOpen) {
+    if (externalDialogOpen && !currentDialogOpen) {
       handleSetDialogOpen(true);
     }
   }, [externalDialogOpen]);

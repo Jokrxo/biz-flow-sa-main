@@ -44,20 +44,28 @@ export default function SalesPage({ tab: initialTab }: { tab?: string }) {
   };
 
   useEffect(() => {
-    const tabParam = new URLSearchParams(location.search).get('tab');
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    const actionParam = params.get('action');
+    
+    // Switch tabs if needed
     if (tabParam && tabParam !== activeTab) {
       setActiveTab(tabParam);
     }
     
-    // Handle create-receipt action - only if not already on receipts tab with dialog open
-    const actionParam = new URLSearchParams(location.search).get('action');
+    // Handle create-receipt action - only if action param exists and dialog is not already open
     if (actionParam === 'create-receipt' && !receiptDialogOpen) {
       setActiveTab('receipts');
       setReceiptDialogOpen(true);
-      // Clear the URL parameter after handling
-      navigate('/sales?tab=receipts', { replace: true });
     }
-  }, [location.search, activeTab, navigate, receiptDialogOpen]);
+    
+    // Clear the action parameter from URL after handling (to prevent loops)
+    // Only do this once when action param was present
+    if (actionParam && tabParam) {
+      // Use replace to avoid creating history entries
+      navigate(`/sales?tab=${tabParam}`, { replace: true });
+    }
+  }, [location.search]);
 
   return (
     <>
