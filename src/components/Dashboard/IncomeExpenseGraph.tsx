@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTheme } from 'next-themes';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ interface IncomeExpenseGraphProps {
 }
 
 export const IncomeExpenseGraph = ({ data }: IncomeExpenseGraphProps) => {
+  const { theme } = useTheme();
   const [period, setPeriod] = useState("12");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<IncomeExpenseData | null>(null);
@@ -32,6 +34,17 @@ export const IncomeExpenseGraph = ({ data }: IncomeExpenseGraphProps) => {
     const monthsToShow = parseInt(period);
     return data.slice(-monthsToShow);
   }, [data, period]);
+
+  // Theme-based colors
+  const colors = useMemo(() => {
+    const isDark = theme === 'dark';
+    return {
+      income: isDark ? '#34D399' : '#10B981',  // Green - lighter in dark mode
+      expense: isDark ? '#F87171' : '#EF4444', // Red - lighter in dark mode
+      incomeGradient: isDark ? '#065f46' : '#d1fae5',
+      expenseGradient: isDark ? '#7f1d1d' : '#fee2e2'
+    };
+  }, [theme]);
 
   const totalIncome = filteredData.reduce((sum, d) => sum + d.income, 0);
   const totalExpenses = filteredData.reduce((sum, d) => sum + d.expenses, 0);
@@ -167,7 +180,7 @@ export const IncomeExpenseGraph = ({ data }: IncomeExpenseGraphProps) => {
                   type="monotone" 
                   dataKey="income" 
                   name="Income" 
-                  stroke="#10B981" 
+                  stroke={colors.income} 
                   strokeWidth={2}
                   fillOpacity={1} 
                   fill="url(#colorIncome)" 
@@ -177,7 +190,7 @@ export const IncomeExpenseGraph = ({ data }: IncomeExpenseGraphProps) => {
                   type="monotone" 
                   dataKey="expenses" 
                   name="Expenses" 
-                  stroke="#EF4444" 
+                  stroke={colors.expense} 
                   strokeWidth={2}
                   fillOpacity={1} 
                   fill="url(#colorExpense)" 
