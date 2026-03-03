@@ -113,7 +113,10 @@ export function SalesCustomers() {
     phone: "",
     address: "",
     openingBalance: "",
-    openingDate: new Date().toISOString().split('T')[0]
+    openingDate: new Date().toISOString().split('T')[0],
+    creditTerms: "30", // Default 30 days
+    accountCode: "", // Customer account code
+    isActive: true
   });
 
   const loadCustomers = useCallback(async () => {
@@ -201,9 +204,30 @@ export function SalesCustomers() {
       return;
     }
     try {
-      const { error } = await supabase.from('customers').delete().eq('id', viewCustomer.id);
+      // Soft delete - set is_active to false instead of hard deleting
+      const { error } = await supabase.from('customers').update({ 
+        is_active: false,
+        // Also prepend [INACTIVE] to name to make it clear
+        name: viewCustomer.name.startsWith('[INACTIVE]') ? viewCustomer.name : `[INACTIVE] ${viewCustomer.name}`
+      }).eq('id', viewCustomer.id);
       if (error) throw error;
-      toast({ title: "Success", description: "Customer deleted successfully" });
+      
+      // Log to audit trail
+      try {
+        await supabase.from('audit_logs').insert({
+          company_id: viewCustomer.company_id,
+          user_id: user?.id,
+          action: 'DELETE',
+          entity_type: 'customer',
+          entity_id: viewCustomer.id,
+          description: `Soft-deleted customer: ${viewCustomer.name} (ID: ${viewCustomer.id})`,
+          timestamp: new Date().toISOString()
+        });
+      } catch (auditErr) {
+        console.error('Failed to log audit trail:', auditErr);
+      }
+      
+      toast({ title: "Success", description: "Customer deactivated successfully (soft delete)" });
       setDeleteCustomerOpen(false);
       setViewCustomer(null);
       loadCustomers();
@@ -326,18 +350,54 @@ export function SalesCustomers() {
           return;
         }
       }
+      
+      // Get company profile first
       const { data: profile } = await supabase
         .from("profiles")
         .select("company_id")
         .eq("user_id", user?.id)
         .single();
-
+      
+      if (!profile?.company_id) {
+        toast({ title: "Error", description: "Company not found. Please set up a company first.", variant: "destructive" });
+        return;
+      }
+      
+      // Check for duplicate customer name within the company
+      const { data: existingCustomers } = await supabase
+        .from("customers")
+        .select("id, name")
+        .eq("company_id", profile.company_id)
+        .ilike("name", formData.name.trim());
+      
+      if (existingCustomers && existingCustomers.length > 0) {
+        toast({ title: "Duplicate Customer", description: `A customer with name "${formData.name}" already exists. Please use a different name.`, variant: "destructive" });
+        return;
+      }
+      
+      // Check for duplicate account code if provided
+      if (formData.accountCode && formData.accountCode.trim()) {
+        const { data: existingCode } = await supabase
+          .from("customers")
+          .select("id, name, account_code")
+          .eq("company_id", profile.company_id)
+          .eq("account_code", formData.accountCode.trim());
+        
+        if (existingCode && existingCode.length > 0) {
+          toast({ title: "Duplicate Account Code", description: `Account code "${formData.accountCode}" is already used by customer "${existingCode[0].name}". Please use a different code.`, variant: "destructive" });
+          return;
+        }
+      }
+      
       const { data: insertedCustomer, error } = await supabase.from("customers").insert({
-        company_id: profile!.company_id,
+        company_id: profile.company_id,
         name: formData.name,
         email: formData.email || null,
         phone: formData.phone || null,
         address: formData.address || null,
+        credit_terms: parseInt(formData.creditTerms) || 30,
+        account_code: formData.accountCode || null,
+        is_active: formData.isActive,
       }).select('id').single();
 
       if (error) throw error;
@@ -349,7 +409,7 @@ export function SalesCustomers() {
           const { data: accounts } = await supabase
             .from('chart_of_accounts')
             .select('id, account_code, account_name, account_type')
-            .eq('company_id', profile!.company_id)
+            .eq('company_id', profile.company_id)
             .eq('is_active', true);
           const findAcc = (type: string, codes: string[], names: string[]) => {
             const list = (accounts || []).map((a: any) => ({ id: String(a.id), code: String(a.account_code || ''), name: String(a.account_name || '').toLowerCase(), type: String(a.account_type || '').toLowerCase() }));
@@ -411,7 +471,7 @@ export function SalesCustomers() {
       setTimeout(() => {
         setIsSuccess(false);
         setDialogOpen(false);
-        setFormData({ name: "", email: "", phone: "", address: "", openingBalance: "", openingDate: new Date().toISOString().split('T')[0] });
+        setFormData({ name: "", email: "", phone: "", address: "", openingBalance: "", openingDate: new Date().toISOString().split('T')[0], creditTerms: "30", accountCode: "", isActive: true });
         loadCustomers();
       }, 2000);
     } catch (error: any) {
@@ -883,6 +943,37 @@ export function SalesCustomers() {
                                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                                 placeholder="Physical address"
                             />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 p-3 bg-muted/50 rounded-lg">
+                            <div>
+                                <Label className="text-xs">Account Code</Label>
+                                <Input
+                                value={formData.accountCode}
+                                onChange={(e) => setFormData({ ...formData, accountCode: e.target.value })}
+                                placeholder="CUST-001"
+                                className="bg-background"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-xs">Credit Terms (days)</Label>
+                                <Input
+                                type="number"
+                                value={formData.creditTerms}
+                                onChange={(e) => setFormData({ ...formData, creditTerms: e.target.value })}
+                                placeholder="30"
+                                className="bg-background"
+                                />
+                            </div>
+                            </div>
+                            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+                            <Checkbox
+                                id="isActive"
+                                checked={formData.isActive}
+                                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked === true })}
+                            />
+                            <Label htmlFor="isActive" className="cursor-pointer">
+                                Active Customer
+                            </Label>
                             </div>
                             <div className="grid grid-cols-2 gap-4 p-3 bg-muted/50 rounded-lg">
                             <div>
