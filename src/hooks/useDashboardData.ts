@@ -117,7 +117,10 @@ const DEFAULT_DATA: DashboardData = {
 
 // Helper functions (preserved from original)
 const totalsFromTrialBalance = (tb: any[]) => {
-  const incomeAccounts = tb.filter((a: any) => ['revenue', 'income', 'sales'].includes((a.account_type || '').toLowerCase()));
+  const incomeAccounts = tb.filter((a: any) => {
+    const t = (a.account_type || '').toLowerCase();
+    return t.includes('income') || t.includes('revenue') || t.includes('sales') || t.includes('turnover');
+  });
   const income = incomeAccounts.reduce((s: number, a: any) => s + (a.balance || 0), 0);
   
   console.log('Income accounts found:', incomeAccounts.map(a => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
@@ -127,16 +130,24 @@ const totalsFromTrialBalance = (tb: any[]) => {
     const name = (a.account_name || '').toLowerCase();
     const code = String(a.account_code || '');
     const type = (a.account_type || '').toLowerCase();
-    return name.includes('cost of') || name.includes('goods sold') || code.startsWith('5000') || type === 'cost of goods sold' || type === 'cogs';
+    return name.includes('cost of') || name.includes('goods sold') || name.includes('cost of sales') || code.startsWith('5000') || type.includes('cost of goods sold') || type.includes('cost of sales') || type.includes('cogs');
   };
 
-  const cogsAccounts = tb.filter((a: any) => ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes((a.account_type || '').toLowerCase()) && isCogs(a));
+  const cogsAccounts = tb.filter((a: any) => {
+    const t = (a.account_type || '').toLowerCase();
+    const isExpenseType = t.includes('expense') || t.includes('cost') || t.includes('cogs');
+    return isExpenseType && isCogs(a);
+  });
   const cogs = cogsAccounts.reduce((s: number, a: any) => s + (a.balance || 0), 0);
   
   console.log('COGS accounts found:', cogsAccounts.map(a => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
   console.log('Total COGS:', cogs);
   
-  const opexAccounts = tb.filter((a: any) => ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes((a.account_type || '').toLowerCase()) && !isCogs(a));
+  const opexAccounts = tb.filter((a: any) => {
+    const t = (a.account_type || '').toLowerCase();
+    const isExpenseType = t.includes('expense') || t.includes('cost') || t.includes('cogs');
+    return isExpenseType && !isCogs(a);
+  });
   const opex = opexAccounts.reduce((s: number, a: any) => s + (a.balance || 0), 0);
   
   console.log('OPEX accounts found:', opexAccounts.map(a => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
@@ -321,6 +332,8 @@ export const useDashboardData = (
 
       let transactions: any[] = [];
       let trialBalance: any[] = [];
+      let trialBalanceFY: any[] = [];
+      let trialBalanceForBS: any[] = [];
       
       let fyStartForTB: Date;
       if (periodMode === 'fiscal_year') {
@@ -346,14 +359,26 @@ export const useDashboardData = (
          effectiveStart = rangeStart;
       }
 
+      // For Balance Sheet, we need CUMULATIVE balances from the beginning of company history
+      // not just the selected period. Fetch from earliest possible date (e.g., 2020-01-01)
+      const companyStartDate = '2020-01-01T00:00:00.000Z';
+
       if (isDemo) {
         transactions = await getDemoTransactions();
         trialBalance = await getDemoTrialBalanceForPeriod(startDate.toISOString(), endDate.toISOString());
+        trialBalanceForBS = trialBalance; // Use same for demo
       } else {
-        // Fetch TB
-        // We use effectiveStart instead of startDate (selected month) to show YTD or 12-Month breakdown
-        // This ensures the "Income Breakdown" graphs match the scope of the "Income vs Expenses" chart
-        const tbPromise = fetchTrialBalanceForPeriod(String(cid), effectiveStart.toISOString(), endDate.toISOString(), fyStartForTB);
+      // Fetch TB for the selected period (used for trends)
+      const tbPromise = fetchTrialBalanceForPeriod(String(cid), effectiveStart.toISOString(), endDate.toISOString(), fyStartForTB);
+      
+      // For Balance Sheet, we need cumulative from company start
+      const tbCumulativePromise = fetchTrialBalanceForPeriod(String(cid), companyStartDate, endDate.toISOString(), fyStartForTB);
+      
+      // Also fetch fiscal year to date trial balance for pie chart breakdowns (expense/income)
+      // This ensures we get full year data, not just the selected month
+      const fyStartDate = new Date(selectedYear, fiscalStartMonth - 1, 1);
+      console.log('FY Start Date:', fyStartDate.toISOString(), 'End Date:', endDate.toISOString());
+      const tbFYPromise = fetchTrialBalanceForPeriod(String(cid), fyStartDate.toISOString(), endDate.toISOString(), fyStartForTB);
         
         // Fetch Recent Transactions - Direct query to avoid View limitations and ensure 'approved' are included
         const { data: txData, error: txError } = await supabase
@@ -373,9 +398,22 @@ export const useDashboardData = (
         }
         
         trialBalance = await tbPromise;
+        trialBalanceFY = await tbFYPromise;
+        
+        // Fetch cumulative trial balance for Balance Sheet (all time to date)
+        trialBalanceForBS = await tbCumulativePromise || trialBalance;
+        console.log('Cumulative Trial Balance received, account count:', trialBalanceForBS?.length || 0);
+        console.log('Using cumulative TB for BS, sample accounts:', trialBalanceForBS?.slice(0, 3).map((a: any) => ({ code: a.account_code, name: a.account_name, type: a.account_type, balance: a.balance })));
+        
+        console.log('FY Trial Balance received, account count:', trialBalanceFY?.length || 0);
+        console.log('FY Trial Balance sample (first 5):', trialBalanceFY?.slice(0, 5).map((a: any) => ({ code: a.account_code, name: a.account_name, type: a.account_type, balance: a.balance })) || []);
       }
 
       // --- CALCULATIONS (Memoized by virtue of being in queryFn) ---
+
+      console.log('Trial Balance received, account count:', trialBalance?.length || 0);
+      console.log('Sample accounts:', trialBalance?.slice(0, 3).map(a => ({ code: a.account_code, name: a.account_name, type: a.account_type, balance: a.balance })));
+      console.log('All account types in trial balance:', [...new Set((trialBalance || []).map((a: any) => a.account_type))]);
 
       const recentTransactions = (transactions || []).slice(0, 10).map((t: any) => ({
         id: String(t.id || t.reference_number || ''),
@@ -388,18 +426,16 @@ export const useDashboardData = (
 
       let totals = totalsFromTrialBalance(trialBalance);
       
-      // Fallback: If Trial Balance yields 0 (e.g. missing entries), calculate from Transactions directly
-      if (totals.income === 0 && totals.expenses === 0 && transactions.length > 0) {
-        const fallbackIncome = transactions
-          .filter((t: any) => ['income', 'sales', 'invoice', 'revenue'].includes((t.transaction_type || '').toLowerCase()))
-          .reduce((sum: number, t: any) => sum + Number(t.total_amount || 0), 0);
-          
+      // Fallback: If Trial Balance yields 0 expenses but we have transactions with expenses, use transactions
+      // This is common when ledger_entries don't have expense data for the selected period
+      if (totals.expenses === 0 && transactions.length > 0) {
         const fallbackExpenses = transactions
           .filter((t: any) => ['expense', 'bill', 'payment'].includes((t.transaction_type || '').toLowerCase()))
           .reduce((sum: number, t: any) => sum + Number(t.total_amount || 0), 0);
-          
-        if (fallbackIncome > 0 || fallbackExpenses > 0) {
-           totals = { income: fallbackIncome, expenses: fallbackExpenses };
+        
+        if (fallbackExpenses > 0) {
+          totals.expenses = fallbackExpenses;
+          console.log('Using fallback expenses from transactions:', fallbackExpenses);
         }
       }
       
@@ -408,8 +444,10 @@ export const useDashboardData = (
           const type = String(a.account_type || '').toLowerCase();
           const name = String(a.account_name || '').toLowerCase();
           const code = String(a.account_code || '');
-          const isExpense = type === 'expense';
-          const isCogs = name.includes('cost of') || name.includes('goods sold') || code.startsWith('5000');
+          // More flexible expense detection
+          const isExpense = type.includes('expense') || type.includes('cost') || type.includes('cogs');
+          // More comprehensive COGS detection
+          const isCogs = name.includes('cost of') || name.includes('goods sold') || name.includes('cost of sales') || code.startsWith('5000') || type.includes('cost of goods sold') || type.includes('cost of sales') || type.includes('cogs');
           return isExpense && !isCogs;
         })
         .reduce((s: number, a: any) => s + Math.abs(Number(a.balance || 0)), 0);
@@ -417,13 +455,15 @@ export const useDashboardData = (
       // Fallback for Operating Expenses if TB is empty
       const operatingExpenses = operatingExpensesTB > 0 ? operatingExpensesTB : totals.expenses;
         
-      const bsAssets = (trialBalance || []).filter((a: any) => String(a.account_type || '').toLowerCase() === 'asset').reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
-      const bsLiabilities = (trialBalance || []).filter((a: any) => String(a.account_type || '').toLowerCase() === 'liability').reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
-      const bsEquity = (trialBalance || []).filter((a: any) => String(a.account_type || '').toLowerCase() === 'equity').reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
+      // More flexible BS detection - use CUMULATIVE balances for BS
+      const bsAssets = (trialBalanceForBS || []).filter((a: any) => String(a.account_type || '').toLowerCase().includes('asset')).reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
+      const bsLiabilities = (trialBalanceForBS || []).filter((a: any) => String(a.account_type || '').toLowerCase().includes('liabilit')).reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
+      const bsEquity = (trialBalanceForBS || []).filter((a: any) => String(a.account_type || '').toLowerCase().includes('equit')).reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
 
-      console.log('Trial Balance - Assets:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase() === 'asset'));
-      console.log('Trial Balance - Liabilities:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase() === 'liability'));
-      console.log('Trial Balance - Equity:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase() === 'equity'));
+      // Debug log what we found
+      console.log('Trial Balance - Assets:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase().includes('asset')).map((a: any) => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
+      console.log('Trial Balance - Liabilities:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase().includes('liabilit')).map((a: any) => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
+      console.log('Trial Balance - Equity:', trialBalance?.filter((a: any) => String(a.account_type || '').toLowerCase().includes('equit')).map((a: any) => ({ code: a.account_code, name: a.account_name, balance: a.balance })));
       console.log('Total Assets:', bsAssets, 'Total Liabilities:', bsLiabilities, 'Total Equity:', bsEquity);
 
       // Detailed BS Breakdown
@@ -440,15 +480,16 @@ export const useDashboardData = (
         const bal = Number(a.balance || 0);
         const name = String(a.account_name || '').toLowerCase();
 
-        if (type === 'asset') {
+        // More flexible type detection
+        if (type.includes('asset')) {
           // Convention: < 1500 is Current (Bank, AR, Inventory), >= 1500 is Non-Current (Fixed, Long-term)
           if (code < 1500) bsCurrentAssets += bal;
           else bsNonCurrentAssets += bal;
-        } else if (type === 'liability') {
+        } else if (type.includes('liabilit')) {
           // Convention: < 2400 is Current Liabilities (AP, VAT, Short-term up to 2300), >= 2400 is Non-Current (Loans 2400+, Mortgages, etc.)
           if (code < 2400) bsCurrentLiabilities += bal;
           else bsNonCurrentLiabilities += bal;
-        } else if (type === 'equity') {
+        } else if (type.includes('equit')) {
           if (name.includes('retained') || name.includes('earnings')) bsEquityRetained += bal;
           else bsEquityCapital += bal;
         }
@@ -460,16 +501,27 @@ export const useDashboardData = (
         equity: { capital: bsEquityCapital, retained: bsEquityRetained, total: bsEquity }
       };
 
-      const incomeAccounts = (trialBalance || []).filter((a: any) => {
+      console.log('BS Breakdown calculated:', bsBreakdown);
+
+      // Use FY trial balance for pie chart breakdowns (income/expense) to get full year data
+      const tbForBreakdown = trialBalanceFY || trialBalance;
+      
+      const incomeAccounts = (tbForBreakdown || []).filter((a: any) => {
         const t = String(a.account_type || '').toLowerCase();
-        return ['revenue', 'income', 'sales'].includes(t);
+        const code = String(a.account_code || '');
+        // More flexible matching for income account types - include account codes starting with 4
+        return t.includes('income') || t.includes('revenue') || t.includes('sales') || t.includes('turnover') || code.startsWith('4');
       }).map((a: any) => ({ name: String(a.account_name || ''), value: Math.abs(Number(a.balance || 0)) }));
 
       console.log('Income accounts for pie chart:', incomeAccounts);
 
-      const expenseAccounts = (trialBalance || []).filter((a: any) => {
+      const expenseAccounts = (tbForBreakdown || []).filter((a: any) => {
         const t = String(a.account_type || '').toLowerCase();
-        return ['expense', 'expenses', 'cost of goods sold', 'cogs'].includes(t);
+        const name = String(a.account_name || '').toLowerCase();
+        const code = String(a.account_code || '');
+        // More flexible matching for expense account types - include account codes starting with 5
+        return t.includes('expense') || t.includes('cost') || t.includes('cogs') || 
+               name.includes('cost of') || code.startsWith('5');
       }).map((a: any) => ({ 
         name: String(a.account_name || ''), 
         code: String(a.account_code || ''),
@@ -480,18 +532,32 @@ export const useDashboardData = (
 
       console.log('All expense accounts (for expense breakdown):', expenseAccounts);
 
-      // Separate COGS from OPE
-      const cogsAccounts = expenseAccounts.filter((a: any) => 
-        a.name.toLowerCase().includes('cost of') || 
-        a.name.toLowerCase().includes('goods sold') ||
-        a.code.startsWith('5000') ||
-        a.type.toLowerCase() === 'cost of goods sold' ||
-        a.type.toLowerCase() === 'cogs'
-      );
-      console.log('COGS accounts:', cogsAccounts);
+      // Always ensure expense breakdown has data - use trial balance expense accounts directly
+      let expenseBreakdown = expenseAccounts.length > 0 ? expenseAccounts.sort((a: any, b: any) => b.value - a.value).slice(0, 10) : [];
+      
+      // If still no data, try building from transactions as last resort
+      if (expenseBreakdown.length === 0 && transactions.length > 0) {
+        console.log('No expense accounts in trial balance, building from transactions...');
+        // Build expense breakdown from transactions
+        const byType: Record<string, number> = {};
+        transactions.forEach((t: any) => {
+          const type = t.transaction_type || 'Other';
+          byType[type] = (byType[type] || 0) + Number(t.total_amount || 0);
+        });
+        expenseBreakdown = Object.entries(byType).map(([name, value]) => ({ 
+          name, 
+          code: '',
+          type: 'expense',
+          balance: value,
+          value 
+        }));
+      }
+      
+      console.log('Expense breakdown final:', expenseBreakdown);
 
-      let incomeBreakdown = incomeAccounts.sort((a: any, b: any) => b.value - a.value).slice(0, 10);
-      let expenseBreakdown = expenseAccounts.sort((a: any, b: any) => b.value - a.value).slice(0, 10);
+      // Also build income breakdown
+      const incomeBreakdown = incomeAccounts.length > 0 ? incomeAccounts.sort((a: any, b: any) => b.value - a.value).slice(0, 10) : [];
+      console.log('Income breakdown final:', incomeBreakdown);
 
       // Chart Data Logic
       const months: Array<{ start: Date; end: Date; label: string }> = [];
@@ -556,17 +622,25 @@ export const useDashboardData = (
         const code = codeByIdAll.get(id) || '';
         const debit = Number(e.debit || 0);
         const credit = Number(e.credit || 0);
-        const isIncome = type.includes('income') || type.includes('revenue');
-        const isExpense = type.includes('expense') || name.includes('cost of') || String(code).startsWith('5');
+        
+        // More flexible income/expense detection
+        const isIncome = type.includes('income') || type.includes('revenue') || type.includes('sales') || type.includes('turnover');
+        const isExpense = type.includes('expense') || type.includes('cost') || type.includes('cogs') || name.includes('cost of') || String(code).startsWith('5');
         
         if (isIncome) {
           buckets[key].income += Math.abs(credit - debit);
         } else if (isExpense) {
           const val = Math.abs(debit - credit);
+          // More comprehensive COGS detection
+          const isCogs = name.includes('cost of') || name.includes('goods sold') || name.includes('cost of sales') || String(code).startsWith('50') || type.includes('cost of goods sold') || type.includes('cost of sales') || type.includes('cogs');
+          if (isCogs) {
+            buckets[key].cogs += val;
+          } else {
+            buckets[key].opex += val;
+          }
+          // Include BOTH COGS and OPEX in total expenses for the Income vs Expenses graph
+          // This provides a complete view of all expenses
           buckets[key].expenses += val;
-          const isCogs = name.includes('cost of') || name.includes('goods sold') || String(code).startsWith('5000');
-          if (isCogs) buckets[key].cogs += val;
-          else buckets[key].opex += val;
         }
       });
 
@@ -576,6 +650,116 @@ export const useDashboardData = (
       const profitMargins: any[] = [];
       const assetTrend: any[] = [];
       
+      // Build chart data from TRANSACTIONS (not trial balance) for accurate monthly figures
+      // First, group transactions by month
+      const monthLabels: Record<string, string> = {};
+      months.forEach(m => { 
+        const key = `${m.start.getFullYear()}-${m.start.getMonth()}`;
+        monthLabels[key] = m.label;
+      });
+      
+      const txByMonth: Record<string, { label: string; income: number; expenses: number }> = {};
+      months.forEach(m => { 
+        const key = `${m.start.getFullYear()}-${m.start.getMonth()}`;
+        txByMonth[key] = { label: m.label, income: 0, expenses: 0 }; 
+      });
+      
+      // Also track COGS vs OPEX from transaction line items
+      const costByMonth: Record<string, { cogs: number; opex: number }> = {};
+      months.forEach(m => { 
+        const key = `${m.start.getFullYear()}-${m.start.getMonth()}`;
+        costByMonth[key] = { cogs: 0, opex: 0 }; 
+      });
+      
+      // Get transaction entries to determine expense categories
+      const { data: txEntriesForCharts } = await supabase
+        .from('transaction_entries')
+        .select(`account_id, debit, credit, transactions!inner (transaction_date, company_id, transaction_type, status)`)
+        .eq('transactions.company_id', cid)
+        .gte('transactions.transaction_date', months[0].start.toISOString())
+        .lte('transactions.transaction_date', months[months.length - 1].end.toISOString())
+        .in('transactions.status', ['posted', 'approved', 'pending']);
+      
+      // Get account info for categorizing
+      const expenseTxEntries = (txEntriesForCharts || []).filter((e: any) => {
+        const id = String(e.account_id || '');
+        const type = (typeByIdAll.get(id) || '').toLowerCase();
+        const name = String(nameByIdAll.get(id) || '').toLowerCase();
+        const code = codeByIdAll.get(id) || '';
+        return type.includes('expense') || type.includes('cost') || type.includes('cogs') || 
+               name.includes('cost of') || String(code).startsWith('5');
+      });
+      
+      expenseTxEntries.forEach((e: any) => {
+        const txDate = new Date(e.transactions?.transaction_date);
+        const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
+        if (!costByMonth[key]) return;
+        const id = String(e.account_id || '');
+        const name = String(nameByIdAll.get(id) || '').toLowerCase();
+        const code = codeByIdAll.get(id) || '';
+        const debit = Number(e.debit || 0);
+        const credit = Number(e.credit || 0);
+        const amount = Math.abs(debit - credit);
+        const isCogs = name.includes('cost of') || name.includes('goods sold') || 
+                       name.includes('cost of sales') || String(code).startsWith('50');
+        if (isCogs) costByMonth[key].cogs += amount;
+        else costByMonth[key].opex += amount;
+      });
+      
+      // Now build monthly buckets from transactions
+      // Use account-level data to properly separate COGS from OPEX
+      const expenseTxForChart = (txEntriesForCharts || []).filter((e: any) => {
+        const id = String(e.account_id || '');
+        const type = (typeByIdAll.get(id) || '').toLowerCase();
+        const name = (nameByIdAll.get(id) || '').toLowerCase();
+        const code = codeByIdAll.get(id) || '';
+        return type.includes('expense') || type.includes('cost') || type.includes('cogs') || 
+               name.includes('cost of') || String(code).startsWith('5');
+      });
+      
+      // Calculate expenses excluding COGS for Income vs Expenses graph
+      const txExpensesByMonth: Record<string, number> = {};
+      months.forEach(m => { 
+        const key = `${m.start.getFullYear()}-${m.start.getMonth()}`;
+        txExpensesByMonth[key] = 0;
+      });
+      
+      expenseTxForChart.forEach((e: any) => {
+        const txDate = new Date(e.transactions?.transaction_date);
+        const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
+        if (!txExpensesByMonth[key]) return;
+        const id = String(e.account_id || '');
+        const name = String(nameByIdAll.get(id) || '').toLowerCase();
+        const code = codeByIdAll.get(id) || '';
+        const isCogs = name.includes('cost of') || name.includes('goods sold') || 
+                       name.includes('cost of sales') || String(code).startsWith('50');
+        if (!isCogs) {
+          // Only include OPEX in expenses, exclude COGS
+          const amount = Math.abs(Number(e.debit || 0) - Number(e.credit || 0));
+          txExpensesByMonth[key] += amount;
+        }
+      });
+      
+      transactions.forEach((t: any) => {
+        const txDate = new Date(t.transaction_date);
+        const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
+        if (!txByMonth[key]) return;
+        // Use account-based calculation for BOTH income and expenses (from ledger entries)
+        // This ensures we don't double-count from transactions AND ledger entries
+      });
+      
+      // Now populate txByMonth from the ledger entries-based buckets
+      months.forEach(m => {
+        const key = `${m.start.getFullYear()}-${m.start.getMonth()}`;
+        if (buckets[key]) {
+          txByMonth[key].income = buckets[key].income;
+          txByMonth[key].expenses = buckets[key].expenses;
+        }
+      });
+      
+      console.log('Transaction-based monthly data:', txByMonth);
+      console.log('Cost breakdown by month:', costByMonth);
+      
       let prevMonthIncome = 0;
       let prevMonthExpenses = 0;
       let prevMonthProfit = 0;
@@ -583,7 +767,10 @@ export const useDashboardData = (
       // Ensure we iterate chronologically based on 'months' array, not 'buckets' keys (which might be unsorted)
       months.forEach(m => {
         const key = `${m.start.getFullYear()}-${m.start.getMonth()}`;
-        const r = buckets[key];
+        // Use transaction-based data for income/expenses, trial balance for COGS/OPEX
+        const r = txByMonth[key];
+        const tb = buckets[key]; // Trial balance data for COGS vs OPEX
+        const costData = costByMonth[key];
         
         if (!r) return; // Should not happen as buckets is initialized from months
 
@@ -607,19 +794,22 @@ export const useDashboardData = (
           pctChange: Number(profitPctChange.toFixed(1))
         });
         
-        const totalCosts = r.cogs + r.opex;
-        const cogsPct = totalCosts > 0 ? (r.cogs / totalCosts) * 100 : 0;
-        const opexPct = totalCosts > 0 ? (r.opex / totalCosts) * 100 : 0;
+        // Use trial balance data for COGS vs OPEX (tb), fallback to transaction entries (costData), then to total expenses (r.expenses)
+        const cogs = tb ? tb.cogs : (costData ? costData.cogs : 0);
+        const opex = tb ? tb.opex : (costData ? costData.opex : r.expenses);
+        const totalCosts = cogs + opex;
+        const cogsPct = totalCosts > 0 ? (cogs / totalCosts) * 100 : 0;
+        const opexPct = totalCosts > 0 ? (opex / totalCosts) * 100 : 0;
         
         costStructure.push({ 
           month: r.label, 
-          cogs: Number(r.cogs.toFixed(2)), 
-          opex: Number(r.opex.toFixed(2)),
+          cogs: Number(cogs.toFixed(2)), 
+          opex: Number(opex.toFixed(2)),
           total: Number(totalCosts.toFixed(2)),
           cogsPct: Number(cogsPct.toFixed(1)),
           opexPct: Number(opexPct.toFixed(1))
         });
-        const grossProfit = r.income - r.cogs;
+        const grossProfit = r.income - cogs;
         const operatingProfit = r.income - r.expenses; // Simplified EBIT
         
         const grossMargin = r.income > 0 ? (grossProfit / r.income) * 100 : 0;
@@ -638,6 +828,9 @@ export const useDashboardData = (
         prevMonthExpenses = r.expenses;
         prevMonthProfit = netProfit;
       });
+
+      console.log('Cost Structure data:', costStructure);
+      console.log('Profit Margins data:', profitMargins);
 
       // BS Trend
       const bsMovements: Record<string, { assets: number; liabilities: number; equity: number; label: string }> = {};

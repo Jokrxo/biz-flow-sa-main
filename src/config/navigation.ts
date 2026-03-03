@@ -26,7 +26,9 @@ import {
   CalendarRange,
   Stamp,
   ArrowLeftRight,
-  Landmark
+  Landmark,
+  ArrowUpRight,
+  User
 } from "lucide-react";
 
 export const navGroups = [
@@ -55,9 +57,13 @@ export const navGroups = [
     title: "Financing",
     icon: DollarSign,
     items: [
-      { icon: CreditCard, label: "Loan Management", href: "/loans" },
+      { icon: CreditCard, label: "Loan Management", href: "/loans/overview" },
+      { icon: TrendingUp, label: "All Loans", href: "/loans/list" },
+      { icon: ArrowUpRight, label: "Record Payment", href: "/loans/payments" },
+      { icon: FileText, label: "Loan Reports", href: "/loans/reports" },
+      { icon: Calculator, label: "Amortization", href: "/loans/amortization" },
+      { icon: User, label: "Directors", href: "/loans/director" },
       { icon: PieChart, label: "Investment", href: "/investments" },
-      { icon: Users, label: "Directors Transactions", href: "/directors" },
     ]
   },
   {

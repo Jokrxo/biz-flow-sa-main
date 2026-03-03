@@ -110,6 +110,13 @@ const App = () => (
                 
                 {/* Financing */}
                 <Route path="/loans" element={<Suspense fallback={<PageLoader />}><Loans /></Suspense>} />
+                <Route path="/loans/overview" element={<Suspense fallback={<PageLoader />}><Loans tab="overview" /></Suspense>} />
+                <Route path="/loans/list" element={<Suspense fallback={<PageLoader />}><Loans tab="list" /></Suspense>} />
+                <Route path="/loans/new" element={<Suspense fallback={<PageLoader />}><Loans tab="new" /></Suspense>} />
+                <Route path="/loans/payments" element={<Suspense fallback={<PageLoader />}><Loans tab="payments" /></Suspense>} />
+                <Route path="/loans/reports" element={<Suspense fallback={<PageLoader />}><Loans tab="reports" /></Suspense>} />
+                <Route path="/loans/amortization" element={<Suspense fallback={<PageLoader />}><Loans tab="amortization" /></Suspense>} />
+                <Route path="/loans/director" element={<Suspense fallback={<PageLoader />}><Loans tab="director" /></Suspense>} />
                 <Route path="/investments" element={<Suspense fallback={<PageLoader />}><Investments /></Suspense>} />
                 <Route path="/directors" element={<Suspense fallback={<PageLoader />}><Directors /></Suspense>} />
                 

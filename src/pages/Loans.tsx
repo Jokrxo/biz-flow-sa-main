@@ -90,6 +90,13 @@ export default function Loans({ tab: initialTab }: { tab?: string }) {
     const tabParam = new URLSearchParams(location.search).get('tab');
     return tabParam || "overview";
   });
+  
+  // Open add loan dialog when navigating to /loans/new
+  useEffect(() => {
+    if (initialTab === 'new') {
+      setAddLoanOpen(true);
+    }
+  }, [initialTab]);
   const { user } = useAuth();
   const { toast } = useToast();
   const [companyId, setCompanyId] = useState<string>("");
@@ -452,6 +459,9 @@ export default function Loans({ tab: initialTab }: { tab?: string }) {
                 <TabsTrigger value="amortization" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary border-b-2 border-transparent px-4 py-2 rounded-none shadow-none transition-all hover:text-primary">
                   Amortization
                 </TabsTrigger>
+                <TabsTrigger value="reports" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary border-b-2 border-transparent px-4 py-2 rounded-none shadow-none transition-all hover:text-primary">
+                  Reports
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -497,7 +507,75 @@ export default function Loans({ tab: initialTab }: { tab?: string }) {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-6">
+                <>
+                  {/* Amortization Header with Export */}
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold">Amortization Schedules</h2>
+                      <p className="text-sm text-muted-foreground">View and export payment schedules for all loans</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          // Export all amortization schedules
+                          const lines: string[] = [];
+                          allLoans.forEach(loan => {
+                            const annualRate = Number(loan.interest_rate || 0);
+                            const termMonths = Number(loan.term_months || 0);
+                            const principalAmount = Number(loan.principal || 0);
+                            const monthlyRate = annualRate / 12;
+                            let scheduled = loan.monthly_repayment && loan.monthly_repayment > 0
+                              ? Number(loan.monthly_repayment)
+                              : monthlyRate === 0 || termMonths <= 0
+                              ? termMonths > 0 ? principalAmount / termMonths : principalAmount
+                              : (principalAmount * monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
+                            const startDate = new Date(loan.start_date);
+                            let balance = principalAmount;
+                            
+                            lines.push(`Loan: ${loan.reference}`);
+                            lines.push(`Principal: R ${principalAmount.toFixed(2)} | Rate: ${(annualRate * 100).toFixed(2)}% | Term: ${termMonths} months`);
+                            lines.push('Period,Date,Opening,Installment,Interest,Capital,Closing');
+                            
+                            for (let i = 1; i <= termMonths; i++) {
+                              const interest = balance * monthlyRate;
+                              const capital = scheduled - interest;
+                              balance = Math.max(0, balance - capital);
+                              const rowDate = new Date(startDate);
+                              rowDate.setMonth(rowDate.getMonth() + i);
+                              lines.push(`${i},${rowDate.toISOString().split('T')[0]},${(balance + capital).toFixed(2)},${scheduled.toFixed(2)},${interest.toFixed(2)},${capital.toFixed(2)},${balance.toFixed(2)}`);
+                            }
+                            lines.push('');
+                          });
+                          
+                          const csvContent = lines.join('\n');
+                          const blob = new Blob([csvContent], { type: 'text/csv' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `amortization-schedule-${new Date().toISOString().split('T')[0]}.csv`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }} 
+                        className="gap-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export All
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => window.print()} 
+                        className="gap-2"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Print
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
                   {allLoans.map((loan) => {
                     const annualRate = Number(loan.interest_rate || 0);
                     const termMonths = Number(loan.term_months || 0);
@@ -580,8 +658,12 @@ export default function Loans({ tab: initialTab }: { tab?: string }) {
                       </Card>
                     );
                   })}
-                </div>
+                  </div>
+                </>
               )}
+            </TabsContent>
+            <TabsContent value="reports" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <LoanReports companyId={companyId} />
             </TabsContent>
           </Tabs>
 
@@ -835,7 +917,7 @@ export default function Loans({ tab: initialTab }: { tab?: string }) {
               <DialogHeader>
                 <DialogTitle>Record Loan Repayment</DialogTitle>
                 <DialogDescription>
-                  Record a payment for {actionLoan?.borrower_name}
+                  Record a payment for loan: {actionLoan?.reference}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -1642,42 +1724,238 @@ function LoanList({ companyId, onOpenInterest, onOpenRepayment, onOpenPostIntIns
 
 function LoanPayments({ companyId }: { companyId: string }) {
   const [payments, setPayments] = useState<LoanPayment[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [selectedLoan, setSelectedLoan] = useState<string>('');
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentType, setPaymentType] = useState<'interest' | 'repayment'>('repayment');
+  const [isRecording, setIsRecording] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      const [paymentsRes, loansRes] = await Promise.all([
+        supabase
+          .from("loan_payments" as any)
+          .select(`*, loans!inner(reference, loan_type, principal, interest_rate, term_months, monthly_repayment, start_date)`)
+          .eq("loans.company_id", companyId)
+          .order("payment_date", { ascending: false }),
+        supabase
+          .from("loans" as any)
+          .select("*")
+          .eq("company_id", companyId)
+          .eq("status", "active")
+      ]);
+      setPayments((paymentsRes.data || []) as any);
+      setLoans((loansRes.data || []) as any);
+      setLoading(false);
+    };
+    if (companyId) load();
+  }, [companyId]);
+
+  const handleRecordPayment = async () => {
+    if (!selectedLoan || !paymentAmount) {
+      toast({ title: 'Error', description: 'Please select a loan and enter amount', variant: 'destructive' });
+      return;
+    }
+    setIsRecording(true);
+    try {
+      const loan = loans.find(l => l.id === selectedLoan);
+      if (!loan) throw new Error('Loan not found');
+      
+      const amount = parseFloat(paymentAmount);
+      const monthlyRate = loan.interest_rate / 12;
+      const interestPortion = paymentType === 'interest' ? amount : (loan.outstanding_balance * monthlyRate);
+      const principalPortion = paymentType === 'repayment' ? amount - interestPortion : 0;
+
+      await supabase.from('loan_payments').insert({
+        loan_id: selectedLoan,
+        payment_date: paymentDate,
+        amount: amount,
+        principal_component: principalPortion,
+        interest_component: interestPortion
+      });
+
+      // Update loan outstanding balance
+      if (principalPortion > 0) {
+        const newBalance = Math.max(0, loan.outstanding_balance - principalPortion);
+        await supabase.from('loans').update({ 
+          outstanding_balance: newBalance,
+          status: newBalance === 0 ? 'completed' : 'active'
+        }).eq('id', selectedLoan);
+      }
+
+      toast({ title: 'Success', description: 'Payment recorded successfully' });
+      setShowRecordPayment(false);
+      setSelectedLoan('');
+      setPaymentAmount('');
+      
+      // Reload payments
       const { data } = await supabase
         .from("loan_payments" as any)
         .select(`*, loans!inner(reference, loan_type, principal, interest_rate, term_months, monthly_repayment, start_date)`)
         .eq("loans.company_id", companyId)
         .order("payment_date", { ascending: false });
       setPayments((data || []) as any);
-      setLoading(false);
-    };
-    if (companyId) load();
-  }, [companyId]);
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsRecording(false);
+    }
+  };
+
+  // Calculate totals
+  const totals = {
+    payments: payments.length,
+    totalAmount: payments.reduce((s, p) => s + (p.amount || 0), 0),
+    totalInterest: payments.reduce((s, p) => s + (p.interest_component || 0), 0),
+    totalPrincipal: payments.reduce((s, p) => s + (p.principal_component || 0), 0),
+  };
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-      {loading ? (
-        <div className="py-8 text-center">Loading...</div>
-      ) : payments.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground">
-          No payment history found
+    <div className="space-y-6">
+      {/* Header with Record Payment Button */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold">Payment History</h2>
+          <p className="text-sm text-muted-foreground">View and record loan payments</p>
         </div>
-      ) : (
-        <Table>
-          <TableHeader className="bg-slate-700 border-b border-slate-800">
-            <TableRow className="hover:bg-transparent border-none">
-              <TableHead className="text-white">Date</TableHead>
-              <TableHead className="text-white">Loan Ref</TableHead>
-              <TableHead className="text-white">Accrued interest</TableHead>
-              <TableHead className="text-white">Current portion</TableHead>
-              <TableHead className="text-white">Actual paid</TableHead>
-              <TableHead className="text-white">Installment balance</TableHead>
-            </TableRow>
-          </TableHeader>
+        <Button onClick={() => setShowRecordPayment(true)} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Record Payment
+        </Button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <MetricCard 
+          title="Total Payments" 
+          value={`${totals.payments}`} 
+          icon={CreditCard} 
+          color="from-blue-500 to-blue-600" 
+        />
+        <MetricCard 
+          title="Total Amount" 
+          value={`R ${totals.totalAmount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`} 
+          icon={DollarSign} 
+          color="from-green-500 to-green-600" 
+        />
+        <MetricCard 
+          title="Total Interest" 
+          value={`R ${totals.totalInterest.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`} 
+          icon={Percent} 
+          color="from-orange-500 to-orange-600" 
+        />
+        <MetricCard 
+          title="Total Principal" 
+          value={`R ${totals.totalPrincipal.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`} 
+          icon={TrendingUp} 
+          color="from-purple-500 to-purple-600" 
+        />
+      </div>
+
+      {/* Record Payment Dialog */}
+      <Dialog open={showRecordPayment} onOpenChange={setShowRecordPayment}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Record Loan Payment</DialogTitle>
+            <DialogDescription>Record a payment for an existing loan</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Select Loan</Label>
+              <Select value={selectedLoan} onValueChange={setSelectedLoan}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a loan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {loans.map(loan => (
+                    <SelectItem key={loan.id} value={loan.id}>
+                      {loan.reference} - R {loan.outstanding_balance?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })} outstanding
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Payment Date</Label>
+              <Input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Payment Type</Label>
+              <Select value={paymentType} onValueChange={v => setPaymentType(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="repayment">Capital Repayment</SelectItem>
+                  <SelectItem value="interest">Interest Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (R)</Label>
+              <Input 
+                type="number" 
+                value={paymentAmount} 
+                onChange={e => setPaymentAmount(e.target.value)} 
+                placeholder="0.00" 
+              />
+            </div>
+            {selectedLoan && loans.find(l => l.id === selectedLoan) && (
+              <div className="p-3 bg-muted rounded-lg text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Outstanding Balance:</span>
+                  <span className="font-semibold">
+                    R {loans.find(l => l.id === selectedLoan)?.outstanding_balance?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-muted-foreground">Interest Rate:</span>
+                  <span>{((loans.find(l => l.id === selectedLoan)?.interest_rate || 0) * 100).toFixed(2)}% p.a.</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRecordPayment(false)}>Cancel</Button>
+            <Button onClick={handleRecordPayment} disabled={isRecording}>
+              {isRecording ? 'Recording...' : 'Record Payment'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payments Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Records</CardTitle>
+          <CardDescription>All recorded loan payments</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="py-8 text-center">Loading...</div>
+          ) : payments.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No payment history found</p>
+              <p className="text-sm mt-1">Click "Record Payment" to add your first payment</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader className="bg-slate-700 border-b border-slate-800">
+                <TableRow className="hover:bg-transparent border-none">
+                  <TableHead className="text-white">Date</TableHead>
+                  <TableHead className="text-white">Loan Ref</TableHead>
+                  <TableHead className="text-white">Accrued interest</TableHead>
+                  <TableHead className="text-white">Current portion</TableHead>
+                  <TableHead className="text-white">Actual paid</TableHead>
+                  <TableHead className="text-white">Installment balance</TableHead>
+                </TableRow>
+              </TableHeader>
           <TableBody>
             {payments.map((p, index) => {
               const loan: any = (p as any).loans || {};
@@ -1748,8 +2026,10 @@ function LoanPayments({ companyId }: { companyId: string }) {
               );
             })}
           </TableBody>
-        </Table>
-      )}
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -2099,48 +2379,379 @@ function DirectorLoansList({ companyId }: { companyId: string }) {
 function LoanReports({ companyId }: { companyId: string }) {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [payments, setPayments] = useState<LoanPayment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExportCSV = () => {
+    // Export loans summary
+    const headers = ['Reference', 'Type', 'Status', 'Principal', 'Outstanding', 'Interest Rate', 'Term (months)', 'Start Date'];
+    const rows = loans.map(l => [
+      l.reference,
+      l.loan_type === 'short' ? 'Short-term' : 'Long-term',
+      l.status,
+      l.principal,
+      l.outstanding_balance,
+      (l.interest_rate * 100).toFixed(2) + '%',
+      l.term_months,
+      l.start_date
+    ]);
+    
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `loan-report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPaymentsCSV = () => {
+    // Export payments
+    const headers = ['Date', 'Loan Reference', 'Amount', 'Principal', 'Interest'];
+    const rows = payments.map(p => {
+      const loan = loans.find(l => l.id === p.loan_id);
+      return [
+        p.payment_date,
+        loan?.reference || 'Unknown',
+        p.amount,
+        p.principal_component,
+        p.interest_component
+      ];
+    });
+    
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `loan-payments-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     if (companyId) {
-      supabase.from("loans" as any).select("*").eq("company_id", companyId).then(({ data }) => setLoans((data || []) as any));
-      supabase.from("loan_payments" as any).select("*").then(({ data }) => setPayments((data || []) as any));
+      setLoading(true);
+      Promise.all([
+        supabase.from("loans" as any).select("*").eq("company_id", companyId),
+        supabase.from("loan_payments" as any).select("*").order("payment_date", { ascending: false })
+      ]).then(([loansRes, paymentsRes]) => {
+        setLoans((loansRes.data || []) as any);
+        setPayments((paymentsRes.data || []) as any);
+        setLoading(false);
+      });
     }
   }, [companyId]);
 
+  // Calculate totals
   const totals = {
-    interest: payments.reduce((s, p) => s + (p.interest_component || 0), 0),
-    exposure: loans.reduce((s, l) => s + (l.outstanding_balance || 0), 0),
+    loans: loans.length,
+    active: loans.filter(l => l.status === 'active').length,
+    principal: loans.reduce((s, l) => s + (l.principal || 0), 0),
+    outstanding: loans.reduce((s, l) => s + (l.outstanding_balance || 0), 0),
+    interestPaid: payments.reduce((s, p) => s + (p.interest_component || 0), 0),
+    principalPaid: payments.reduce((s, p) => s + (p.principal_component || 0), 0),
   };
+
+  // Group payments by month for chart
+  const paymentsByMonth = payments.reduce((acc: Record<string, { interest: number; principal: number }>, p) => {
+    const month = p.payment_date?.slice(0, 7) || 'Unknown';
+    if (!acc[month]) acc[month] = { interest: 0, principal: 0 };
+    acc[month].interest += p.interest_component || 0;
+    acc[month].principal += p.principal_component || 0;
+    return acc;
+  }, {});
+
+  const monthlyData = Object.entries(paymentsByMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-12)
+    .map(([month, data]) => ({
+      month,
+      interest: data.interest,
+      principal: data.principal,
+      total: data.interest + data.principal
+    }));
+
+  // Loan status distribution
+  const statusDistribution = loans.reduce((acc: Record<string, number>, l) => {
+    const status = l.status || 'unknown';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+
+  // Loan type distribution
+  const typeDistribution = loans.reduce((acc: Record<string, number>, l) => {
+    const type = l.loan_type === 'short' ? 'Short-term' : 'Long-term';
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;  
+  }, {});
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MetricCard title="Total Interest Paid" value={`R ${totals.interest.toFixed(2)}`} icon={Percent} color="from-orange-500 to-orange-600" />
-        <MetricCard title="Total Exposure" value={`R ${totals.exposure.toFixed(2)}`} icon={TrendingUp} color="from-red-500 to-red-600" />
+      {/* Header with Export/Print Buttons */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold">Loan Reports</h2>
+          <p className="text-sm text-muted-foreground">Analytics and insights for your loans</p>
+        </div>
+        <div className="flex gap-2">
+          <DropdownMenu open={showExportMenu} onOpenChange={setShowExportMenu}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportCSV}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export Loans (CSV)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPaymentsCSV}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export Payments (CSV)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2">
+            <FileText className="h-4 w-4" />
+            Print
+          </Button>
+        </div>
       </div>
+
+      {/* Summary Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <MetricCard 
+          title="Total Loans" 
+          value={`${totals.loans}`} 
+          icon={CreditCard} 
+          color="from-blue-500 to-blue-600" 
+          trend={`${totals.active} active`}
+        />
+        <MetricCard 
+          title="Total Principal" 
+          value={`R ${totals.principal.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`} 
+          icon={DollarSign} 
+          color="from-green-500 to-green-600" 
+        />
+        <MetricCard 
+          title="Outstanding" 
+          value={`R ${totals.outstanding.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`} 
+          icon={TrendingUp} 
+          color="from-red-500 to-red-600" 
+        />
+        <MetricCard 
+          title="Interest Paid" 
+          value={`R ${totals.interestPaid.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`} 
+          icon={Percent} 
+          color="from-orange-500 to-orange-600" 
+        />
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Payment Trends */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Trends</CardTitle>
+            <CardDescription>Monthly principal and interest payments</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {monthlyData.length > 0 ? (
+              <div className="space-y-2">
+                {monthlyData.map((item) => (
+                  <div key={item.month} className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground w-20">{item.month}</span>
+                    <div className="flex-1 h-6 bg-muted rounded overflow-hidden flex">
+                      <div 
+                        className="h-full bg-blue-500" 
+                        style={{ width: `${(item.principal / (item.total || 1)) * 100}%` }} 
+                      />
+                      <div 
+                        className="h-full bg-orange-500" 
+                        style={{ width: `${(item.interest / (item.total || 1)) * 100}%` }} 
+                      />
+                    </div>
+                    <span className="text-sm font-mono w-24 text-right">
+                      R {item.total.toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No payment data available
+              </div>
+            )}
+            <div className="flex gap-4 mt-4 justify-center">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-blue-500 rounded" />
+                <span className="text-sm">Principal</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-orange-500 rounded" />
+                <span className="text-sm">Interest</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Loan Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Loan Status</CardTitle>
+            <CardDescription>Distribution by status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loans.length > 0 ? (
+              <div className="space-y-3">
+                {Object.entries(statusDistribution).map(([status, count]) => (
+                  <div key={status} className="flex items-center justify-between">
+                    <span className="capitalize">{status}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 h-4 bg-muted rounded overflow-hidden">
+                        <div 
+                          className={`h-full ${status === 'active' ? 'bg-green-500' : status === 'completed' ? 'bg-blue-500' : 'bg-gray-500'}`}
+                          style={{ width: `${(count / totals.loans) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-mono w-8">{count}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No loans found
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Detailed Table */}
       <Card>
-        <CardHeader><CardTitle>Summary Report</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Loan Details</CardTitle>
+          <CardDescription>All loans with payment summary</CardDescription>
+        </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Reference</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Principal</TableHead>
                 <TableHead className="text-right">Outstanding</TableHead>
+                <TableHead className="text-right">Interest Rate</TableHead>
+                <TableHead className="text-right">Term</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loans.slice(0, 10).map(l => (
-                <TableRow key={l.id}>
-                  <TableCell>{l.reference}</TableCell>
-                  <TableCell><Badge variant="outline" className="capitalize">{l.status}</Badge></TableCell>
-                  <TableCell className="text-right font-mono">R {l.outstanding_balance.toFixed(2)}</TableCell>
+              {loans.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No loans found
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                loans.map((loan) => {
+                  const loanPayments = payments.filter(p => p.loan_id === loan.id);
+                  const totalInterest = loanPayments.reduce((s, p) => s + (p.interest_component || 0), 0);
+                  return (
+                    <TableRow key={loan.id}>
+                      <TableCell className="font-medium">{loan.reference}</TableCell>
+                      <TableCell className="capitalize">{loan.loan_type === 'short' ? 'Short-term' : 'Long-term'}</TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant="outline" 
+                          className={`capitalize ${
+                            loan.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : 
+                            loan.status === 'completed' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
+                            'bg-gray-50 text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          {loan.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        R {Number(loan.principal || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold">
+                        R {Number(loan.outstanding_balance || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {((loan.interest_rate || 0) * 100).toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {loan.term_months} months
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {/* Payment History Summary */}
+      {payments.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Payments</CardTitle>
+            <CardDescription>Latest loan payments</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Loan</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Principal</TableHead>
+                  <TableHead className="text-right">Interest</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payments.slice(0, 10).map((payment) => {
+                  const loan = loans.find(l => l.id === payment.loan_id);
+                  return (
+                    <TableRow key={payment.id}>
+                      <TableCell>{payment.payment_date}</TableCell>
+                      <TableCell className="font-medium">{loan?.reference || 'Unknown'}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        R {Number(payment.amount || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-green-600">
+                        R {Number(payment.principal_component || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-orange-600">
+                        R {Number(payment.interest_component || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
