@@ -506,6 +506,11 @@ export const useDashboardData = (
       // Use FY trial balance for pie chart breakdowns (income/expense) to get full year data
       const tbForBreakdown = trialBalanceFY || trialBalance;
       
+      console.log('tbForBreakdown (FY trial balance):', tbForBreakdown?.slice(0, 5));
+      console.log('trialBalanceFY length:', trialBalanceFY?.length);
+      console.log('trialBalance length:', trialBalance?.length);
+      console.log('Sample account types in tbForBreakdown:', tbForBreakdown?.slice(0, 10).map((a: any) => ({ code: a.account_code, name: a.account_name, type: a.account_type })));
+      
       const incomeAccounts = (tbForBreakdown || []).filter((a: any) => {
         const t = String(a.account_type || '').toLowerCase();
         const code = String(a.account_code || '');
@@ -520,8 +525,12 @@ export const useDashboardData = (
         const name = String(a.account_name || '').toLowerCase();
         const code = String(a.account_code || '');
         // More flexible matching for expense account types - include account codes starting with 5
-        return t.includes('expense') || t.includes('cost') || t.includes('cogs') || 
+        const isExpense = t.includes('expense') || t.includes('cost') || t.includes('cogs') || 
                name.includes('cost of') || code.startsWith('5');
+        if (isExpense) {
+          console.log(`Expense account found: ${code} - ${a.account_name}, type: ${a.account_type}, balance: ${a.balance}`);
+        }
+        return isExpense;
       }).map((a: any) => ({ 
         name: String(a.account_name || ''), 
         code: String(a.account_code || ''),
@@ -549,11 +558,14 @@ export const useDashboardData = (
           code: '',
           type: 'expense',
           balance: value,
-          value 
+          value,
+          isCogs: name.toLowerCase().includes('cost of') || name.toLowerCase().includes('goods sold')
         }));
       }
       
       console.log('Expense breakdown final:', expenseBreakdown);
+      console.log('COGS accounts in expense breakdown:', expenseBreakdown.filter((e: any) => e.isCogs));
+      console.log('OPEX accounts in expense breakdown:', expenseBreakdown.filter((e: any) => !e.isCogs));
 
       // Also build income breakdown
       const incomeBreakdown = incomeAccounts.length > 0 ? incomeAccounts.sort((a: any, b: any) => b.value - a.value).slice(0, 10) : [];
@@ -606,11 +618,15 @@ export const useDashboardData = (
       const nameByIdAll = new Map<string, string>((accountsAll || []).map((a: any) => [String(a.id), String(a.account_name || '')]));
       const codeByIdAll = new Map<string, string>((accountsAll || []).map((a: any) => [String(a.id), String(a.account_code || '')]));
       
+      // Initialize buckets
       const buckets: Record<string, { income: number; expenses: number; cogs: number; opex: number; label: string }> = {};
       months.forEach(m => { 
         const key = `${m.start.getFullYear()}-${m.start.getMonth()}`;
         buckets[key] = { income: 0, expenses: 0, cogs: 0, opex: 0, label: m.label }; 
       });
+      
+      console.log('Processing entries for chart data, count:', entriesForCharts?.length || 0);
+      console.log('Buckets initialized:', Object.keys(buckets));
       
       (entriesForCharts || []).forEach((e: any) => {
         const dt = getEntryDate(e);
@@ -634,6 +650,7 @@ export const useDashboardData = (
           // More comprehensive COGS detection
           const isCogs = name.includes('cost of') || name.includes('goods sold') || name.includes('cost of sales') || String(code).startsWith('50') || type.includes('cost of goods sold') || type.includes('cost of sales') || type.includes('cogs');
           if (isCogs) {
+            console.log(`COGS detected: ${code} - ${name}, amount: ${val}`);
             buckets[key].cogs += val;
           } else {
             buckets[key].opex += val;
@@ -772,6 +789,8 @@ export const useDashboardData = (
         const tb = buckets[key]; // Trial balance data for COGS vs OPEX
         const costData = costByMonth[key];
         
+        console.log(`Month ${key}: tb=${JSON.stringify(tb)}, costData=${JSON.stringify(costData)}`);
+        
         if (!r) return; // Should not happen as buckets is initialized from months
 
         const netProfit = r.income - r.expenses;
@@ -797,6 +816,9 @@ export const useDashboardData = (
         // Use trial balance data for COGS vs OPEX (tb), fallback to transaction entries (costData), then to total expenses (r.expenses)
         const cogs = tb ? tb.cogs : (costData ? costData.cogs : 0);
         const opex = tb ? tb.opex : (costData ? costData.opex : r.expenses);
+        
+        console.log(`Month ${r.label}: tb.cogs=${tb?.cogs}, tb.opex=${tb?.opex}, costData.cogs=${costData?.cogs}, costData.opex=${costData?.opex}, r.expenses=${r.expenses}`);
+        console.log(`  -> Final: cogs=${cogs}, opex=${opex}`);
         const totalCosts = cogs + opex;
         const cogsPct = totalCosts > 0 ? (cogs / totalCosts) * 100 : 0;
         const opexPct = totalCosts > 0 ? (opex / totalCosts) * 100 : 0;
