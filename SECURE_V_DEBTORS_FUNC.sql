@@ -7,6 +7,9 @@ BEGIN
   DROP POLICY IF EXISTS "v_debtors_reconciliation_unrestricted" ON v_debtors_reconciliation;
 END $$;
 
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS get_debtors_reconciliation();
+
 -- Create a function that returns the view data filtered by company
 CREATE OR REPLACE FUNCTION get_debtors_reconciliation()
 RETURNS TABLE (
