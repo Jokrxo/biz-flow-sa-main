@@ -1294,9 +1294,10 @@ function EarningsTab({ companyId, canEdit }: { companyId: string; canEdit: boole
 
   const earnings = Array.isArray(line?.details?.earnings) ? line.details.earnings : [];
 
-  const getCurrentRunLabel = () => {
-    if (!currentRun || !currentRun.period_start) return "";
-    const periodDate = new Date(String(currentRun.period_start));
+  const getCurrentRunLabel = (run?: any) => {
+    const targetRun = run || selectedRun;
+    if (!targetRun || !targetRun.period_start) return "";
+    const periodDate = new Date(String(targetRun.period_start));
     const now = new Date();
     const sameMonth = periodDate.getFullYear() === now.getFullYear() && periodDate.getMonth() === now.getMonth();
     const nextMonth =
@@ -7225,7 +7226,7 @@ function PayrollPostingModule({ companyId }: { companyId: string }) {
         .order('first_name');
       setEmployees((emps || []) as any);
 
-      let runToUse: any = selectedRun;
+      let runToUse: any = currentRun;
       if (!runToUse) {
         const { data: latest } = await supabase
           .from('pay_runs' as any)
