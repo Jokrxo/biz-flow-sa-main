@@ -28,9 +28,7 @@ BEGIN
   ELSE
     -- Create a simple authenticated-only policy
     CREATE POLICY "v_debtors_reconciliation_authenticated" ON v_debtors_reconciliation
-    FOR SELECT TO authenticated
-    USING (true)
-    WITH CHECK (true);
+    FOR SELECT USING (true);
     RAISE NOTICE 'Created authenticated-only policy';
   END IF;
 END $$;
