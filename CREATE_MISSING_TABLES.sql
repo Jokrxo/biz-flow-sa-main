@@ -82,7 +82,7 @@ BEGIN
     CREATE TABLE app_settings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-      fiscal_year_start DATE DEFAULT '03-01',
+      fiscal_year_start DATE DEFAULT '2024-03-01',
       fiscal_default_year INTEGER DEFAULT 2024,
       fiscal_lock_year INTEGER,
       financial_year_closed_date DATE,
