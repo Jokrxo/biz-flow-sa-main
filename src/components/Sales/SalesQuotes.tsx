@@ -68,6 +68,11 @@ export const SalesQuotes = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewFilter, setViewFilter] = useState("all");
   const [page, setPage] = useState(0);
+  
+  // Date range filter state
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [showDateFilter, setShowDateFilter] = useState(false);
   const pageSize = 50;
 
   // Existing state for dialogs
@@ -524,7 +529,7 @@ export const SalesQuotes = () => {
       result = result.filter(q => !String(q.quote_number || '').startsWith('SO-'));
     }
     
-    // Search
+    // Search - filter by customer name, quote number
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(quote => 
@@ -533,16 +538,30 @@ export const SalesQuotes = () => {
       );
     }
 
-    // View Filter
+    // View Filter - filter by status
     if (viewFilter !== "all") {
-       // Assuming viewFilter maps to statuses or 'accepted' (which includes converted)
-       if (viewFilter === 'accepted') {
+      if (viewFilter === 'accepted') {
+        // Accepted includes accepted and converted
         result = result.filter(q => q.status === 'accepted' || q.status === 'converted');
-       } else {
-        // Only filter if it matches a status exactly, otherwise ignore (or add more logic)
-        // For simplicity, let's assume viewFilter can be a status
-        // But for "View: All (No Filter)", we do nothing.
-       }
+      } else if (viewFilter === 'open') {
+        // Open includes draft and sent
+        result = result.filter(q => q.status === 'draft' || q.status === 'sent');
+      } else {
+        // Exact status match
+        result = result.filter(q => q.status === viewFilter);
+      }
+    }
+
+    // Date Range Filter
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      result = result.filter(q => new Date(q.quote_date) >= start);
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      result = result.filter(q => new Date(q.quote_date) <= end);
     }
     
     // Sort
@@ -559,7 +578,7 @@ export const SalesQuotes = () => {
     }
 
     return result;
-  }, [quotes, searchQuery, viewFilter, sortConfig]);
+  }, [quotes, searchQuery, viewFilter, sortConfig, hideSO, startDate, endDate]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {

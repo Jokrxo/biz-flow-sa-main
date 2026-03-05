@@ -333,7 +333,7 @@ export async function postCOGS(
   try {
     // Fetch company COGS configuration
     const { data: config } = await supabase
-      .from('company_config')
+      .from('company_settings')
       .select('inventory_system, costing_method, markup_percentage')
       .eq('company_id', companyId)
       .single();

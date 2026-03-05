@@ -44,7 +44,7 @@ export function InventoryConfigForm({ companyId, onSave }: InventoryConfigFormPr
   const loadConfig = async () => {
     try {
       const { data, error } = await supabase
-        .from("company_config")
+        .from("company_settings")
         .select("inventory_system, costing_method, markup_percentage, period_locked")
         .eq("company_id", companyId)
         .single();
@@ -85,7 +85,7 @@ export function InventoryConfigForm({ companyId, onSave }: InventoryConfigFormPr
       };
 
       const { error } = await supabase
-        .from("company_config")
+        .from("company_settings")
         .upsert(configData, { onConflict: "company_id" });
 
       if (error) throw error;

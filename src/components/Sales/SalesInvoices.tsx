@@ -416,7 +416,12 @@ export const SalesInvoices = () => {
         .eq("user_id", user?.id)
         .single();
 
-      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+      // Get sequential invoice number
+      const { data: seqData, error: seqError } = await (supabase as any).rpc('get_next_invoice_number', {
+        p_company_id: profile!.company_id
+      });
+      if (seqError) throw seqError;
+      const invoiceNumber = seqData as string;
       const totals = calculateTotals();
 
       const { data: invoice, error: invoiceError } = await supabase
@@ -897,6 +902,16 @@ export const SalesInvoices = () => {
         .eq("id", id);
 
       if (error) throw error;
+
+      // Log status change to audit trail
+      await (supabase as any).from('invoice_status_history').insert({
+        invoice_id: id,
+        previous_status: inv.status,
+        new_status: newStatus,
+        changed_by: user?.id,
+        reason: `Status changed to ${newStatus}`
+      });
+
       toast({ title: "Success", description: "Invoice status updated" });
       loadData();
     } catch (error: any) {
@@ -1096,6 +1111,13 @@ export const SalesInvoices = () => {
       const logoDataUrl = await fetchLogoDataUrl(company.logo_url);
       if (logoDataUrl) addLogoToPDF(doc, logoDataUrl);
       doc.save(`invoice_${dto.invoice_number}.pdf`);
+      
+      // Mark as printed
+      await (supabase as any).from('invoices').update({ 
+        is_printed: true, 
+        printed_at: new Date().toISOString() 
+      }).eq('id', inv.id);
+      
       toast({ title: 'Success', description: 'Invoice PDF downloaded' });
     } catch (e) {
       console.error(e);
@@ -1114,6 +1136,12 @@ export const SalesInvoices = () => {
       const doc = buildInvoicePDF(dto, items, company);
       const logoDataUrl = await fetchLogoDataUrl(company.logo_url);
       if (logoDataUrl) addLogoToPDF(doc, logoDataUrl);
+      
+      // Mark as printed
+      await (supabase as any).from('invoices').update({ 
+        is_printed: true, 
+        printed_at: new Date().toISOString() 
+      }).eq('id', inv.id);
       
       // Open print dialog
       const printWindow = window.open('', '_blank');
@@ -1502,6 +1530,8 @@ export const SalesInvoices = () => {
         return inv.status === 'paid' || outstanding === 0;
       case 'draft':
         return inv.status === 'draft';
+      case 'sent':
+        return inv.status === 'sent';
       case 'cancelled':
         return inv.status === 'cancelled';
       case 'overdue':
@@ -1596,6 +1626,7 @@ export const SalesInvoices = () => {
                   <SelectItem value="unpaid">Unpaid</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
                   <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="sent">Sent</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                   <SelectItem value="overdue">Overdue</SelectItem>
               </SelectContent>
@@ -1718,7 +1749,7 @@ export const SalesInvoices = () => {
                               <TableCell className="py-2 text-gray-600">{invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-ZA') : "-"}</TableCell>
                               <TableCell className="text-right py-2 font-medium">R {Number(invoice.total_amount).toLocaleString('en-ZA')}</TableCell>
                               <TableCell className="text-right py-2 font-medium text-primary">R {outstanding.toLocaleString('en-ZA')}</TableCell>
-                              <TableCell className="text-center py-2"><Checkbox checked={false} disabled /></TableCell>
+                              <TableCell className="text-center py-2">{invoice.is_printed ? 'Yes' : ''}</TableCell>
                               <TableCell className="py-2">
                                   {getStatusBadge(invoice.status, invoice.due_date, Number(invoice.amount_paid || 0), Number(invoice.total_amount || 0))}
                               </TableCell>
@@ -1755,7 +1786,13 @@ export const SalesInvoices = () => {
                                               <Receipt className="h-4 w-4 mr-2" /> Create Receipt
                                           </DropdownMenuItem>
                                           {canEdit && (
-                                              <DropdownMenuItem onClick={() => { setInvoiceToCredit(invoice); setCreditReason(""); setCreditNoteOpen(true); }}>
+                                              <DropdownMenuItem onClick={() => {
+                                                if (invoice.status === 'cancelled') {
+                                                  toast({ title: 'Cannot Create Credit Note', description: 'Cancelled invoices cannot have credit notes created.', variant: 'destructive' });
+                                                  return;
+                                                }
+                                                setInvoiceToCredit(invoice); setCreditReason(""); setCreditNoteOpen(true);
+                                              }}>
                                                   <FileText className="h-4 w-4 mr-2" /> Create Credit Note
                                               </DropdownMenuItem>
                                           )}
