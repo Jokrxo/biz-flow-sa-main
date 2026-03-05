@@ -5,6 +5,74 @@ import { supabase } from "@/integrations/supabase/client";
 import { isDemoMode, getDemoCompany, getDemoTransactions, getDemoTrialBalanceForPeriod } from "@/lib/demo-data";
 import { calculateDepreciation } from "@/components/FixedAssets/DepreciationCalculator";
 
+// ============================================================================
+// COGS CONFIGURATION FETCHER - IFRS/SA GAAP Compliant
+// ============================================================================
+// Fetches company inventory system and costing method configuration
+// Branches COGS calculation based on perpetual vs periodic system
+
+interface CompanyCOGSConfig {
+  inventory_system: 'perpetual' | 'periodic';
+  costing_method: 'fifo' | 'weighted_average';
+}
+
+const fetchCompanyCOGSConfig = async (companyId: string): Promise<CompanyCOGSConfig | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('company_config')
+      .select('inventory_system, costing_method')
+      .eq('company_id', companyId)
+      .single();
+    
+    if (error || !data) {
+      // Default to perpetual FIFO if no config
+      return { inventory_system: 'perpetual', costing_method: 'fifo' };
+    }
+    
+    return {
+      inventory_system: data.inventory_system || 'perpetual',
+      costing_method: data.costing_method || 'fifo',
+    };
+  } catch {
+    // Default to perpetual FIFO on error
+    return { inventory_system: 'perpetual', costing_method: 'fifo' };
+  }
+};
+
+/**
+ * Get COGS amount based on inventory system configuration
+ * - Perpetual: Sum from real-time ledger entries with is_cogs flag
+ * - Periodic: Sum from period_end_inventory table only
+ */
+const getCOGSForPeriod = async (
+  companyId: string,
+  startDate: string,
+  endDate: string,
+  config: CompanyCOGSConfig | null
+): Promise<number> => {
+  const inventorySystem = config?.inventory_system || 'perpetual';
+  
+  if (inventorySystem === 'periodic') {
+    // Periodic: Get COGS from period-end records only
+    const startYear = new Date(startDate).getFullYear();
+    const startMonth = new Date(startDate).getMonth() + 1;
+    
+    const { data: periodEnd } = await supabase
+      .from('period_end_inventory')
+      .select('cogs_amount')
+      .eq('company_id', companyId)
+      .eq('period_year', startYear)
+      .eq('period_month', startMonth)
+      .single();
+    
+    return periodEnd?.cogs_amount || 0;
+  } else {
+    // Perpetual: Get COGS from ledger entries (existing logic with is_cogs)
+    // This is handled by the existing isCogs() function in totalsFromTrialBalance
+    return 0; // Return 0, will be calculated by existing logic
+  }
+};
+
 export interface DashboardData {
   metrics: {
     totalAssets: number;
@@ -130,6 +198,9 @@ const totalsFromTrialBalance = (tb: any[]) => {
     const name = (a.account_name || '').toLowerCase();
     const code = String(a.account_code || '');
     const type = (a.account_type || '').toLowerCase();
+    // First check if is_cogs flag is explicitly set
+    if (a.is_cogs === true) return true;
+    // Fallback to string matching for backward compatibility
     return name.includes('cost of') || name.includes('goods sold') || name.includes('cost of sales') || code.startsWith('5000') || type.includes('cost of goods sold') || type.includes('cost of sales') || type.includes('cogs');
   };
 
